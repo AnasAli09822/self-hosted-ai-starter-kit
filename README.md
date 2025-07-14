@@ -35,6 +35,60 @@ Engineering world, handles large amounts of data safely.
 
 ⭐️ **Private Financial Document Analysis** at minimal cost
 
+## 🌍 Arabic AI System Enhancement
+
+This starter kit now includes comprehensive Arabic language support with enhanced AI workflows:
+
+### 🆕 New Arabic AI Workflows
+
+#### 1. Arabic AI Assistant (مساعد الذكاء الاصطناعي العربي)
+- **ID**: `arabic-ai-assistant`
+- **Purpose**: Interactive Arabic language chat assistant
+- **Features**:
+  - Native Arabic language support
+  - Conversation memory
+  - Natural responses
+  - Automatic logging
+
+#### 2. Smart Document Analyzer (محلل الوثائق الذكي)
+- **ID**: `document-analyzer`
+- **Purpose**: Analyze documents and provide comprehensive summaries
+- **API Endpoint**: `POST /webhook/analyze-document`
+- **Features**:
+  - Multi-format document support
+  - Arabic language summaries
+  - Intelligent content analysis
+
+#### 3. Knowledge Base Q&A (نظام أسئلة وأجوبة قاعدة المعرفة)
+- **ID**: `knowledge-base-qa`
+- **Purpose**: Answer questions based on knowledge base
+- **Features**:
+  - Vector-based search
+  - Context-aware responses
+  - Arabic language support
+  - Source tracking
+
+#### 4. Smart Translation Service (خدمة الترجمة الذكية)
+- **ID**: `translation-service`
+- **Purpose**: Translate between multiple languages
+- **API Endpoint**: `POST /webhook/translate`
+- **Features**:
+  - Accurate translations
+  - Context preservation
+  - Multiple language support
+
+### 📚 Arabic Documentation
+- Complete Arabic documentation: [README-AR.md](README-AR.md)
+- Arabic system guide and usage instructions
+- Arabic workflow descriptions
+
+### 🧪 Testing
+Run the Arabic system test script:
+```bash
+./test-arabic-system.sh
+```
+
+
 ## Installation
 
 ### Cloning the Repository

@@ -1,0 +1,145 @@
+{
+  "createdAt": "2024-07-14T01:28:31.616Z",
+  "updatedAt": "2024-07-14T01:28:31.616Z",
+  "id": "arabic-ai-assistant",
+  "name": "مساعد الذكاء الاصطناعي العربي",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "loadPreviousSession": true,
+          "sessionLength": 20
+        }
+      },
+      "id": "arabic-chat-trigger",
+      "name": "محفز الدردشة العربية",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1,
+      "position": [
+        460,
+        240
+      ],
+      "webhookId": "arabic-chat-webhook"
+    },
+    {
+      "parameters": {
+        "systemMessage": "أنت مساعد ذكي يتحدث العربية بطلاقة. مهمتك هي مساعدة المستخدمين في أي استفسارات باللغة العربية. كن مفيداً ومهذباً ودقيقاً في إجاباتك. إذا لم تتمكن من الإجابة على سؤال، اعترف بذلك واقترح البدائل المناسبة.",
+        "options": {}
+      },
+      "id": "arabic-llm-chain",
+      "name": "سلسلة النموذج اللغوي العربي",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        680,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {
+          "temperature": 0.7,
+          "topK": 40,
+          "topP": 0.9
+        }
+      },
+      "id": "arabic-ollama-model",
+      "name": "نموذج أولاما العربي",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        700,
+        460
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-entry",
+              "name": "log_entry",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "response-entry",
+              "name": "response",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp-entry",
+              "name": "timestamp",
+              "value": "={{ $now }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "logging-node",
+      "name": "تسجيل السجلات",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        900,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "محفز الدردشة العربية": {
+      "main": [
+        [
+          {
+            "node": "سلسلة النموذج اللغوي العربي",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "نموذج أولاما العربي": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "سلسلة النموذج اللغوي العربي",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "سلسلة النموذج اللغوي العربي": {
+      "main": [
+        [
+          {
+            "node": "تسجيل السجلات",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "arabic-ai-v1",
+  "triggerCount": 0,
+  "tags": ["Arabic", "AI", "Chat", "Assistant"]
+}

@@ -1,0 +1,224 @@
+{
+  "createdAt": "2024-07-14T01:28:31.616Z",
+  "updatedAt": "2024-07-14T01:28:31.616Z",
+  "id": "knowledge-base-qa",
+  "name": "نظام أسئلة وأجوبة قاعدة المعرفة",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "loadPreviousSession": true,
+          "sessionLength": 10
+        }
+      },
+      "id": "qa-chat-trigger",
+      "name": "محفز الأسئلة والأجوبة",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1,
+      "position": [
+        300,
+        400
+      ],
+      "webhookId": "knowledge-base-qa-webhook"
+    },
+    {
+      "parameters": {
+        "query": "={{ $json.chatInput }}",
+        "topK": 5,
+        "options": {}
+      },
+      "id": "qdrant-search",
+      "name": "البحث في قاعدة المعرفة",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1,
+      "position": [
+        520,
+        400
+      ],
+      "credentials": {
+        "qdrantApi": {
+          "id": "sFfERYppMeBnFNeA",
+          "name": "Local QdrantApi database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "search-results",
+              "name": "search_results",
+              "value": "={{ $json.map(item => item.pageContent).join('\\n\\n') }}",
+              "type": "string"
+            },
+            {
+              "id": "user-question",
+              "name": "user_question",
+              "value": "={{ $('محفز الأسئلة والأجوبة').item.json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "context-prompt",
+              "name": "context_prompt",
+              "value": "بناءً على المعلومات التالية من قاعدة المعرفة، أجب على السؤال باللغة العربية بطريقة شاملة ومفيدة:\\n\\nالمعلومات المتاحة:\\n{{ $json.search_results }}\\n\\nالسؤال: {{ $json.user_question }}\\n\\nالجواب:",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-context",
+      "name": "تحضير السياق",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        740,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "systemMessage": "أنت خبير في الإجابة على الأسئلة باستخدام قاعدة المعرفة. استخدم المعلومات المتاحة لتقديم إجابات دقيقة ومفيدة باللغة العربية. إذا لم تجد المعلومات الكافية، أشر إلى ذلك واقترح طرق للحصول على المزيد من المعلومات.",
+        "humanMessage": "={{ $json.context_prompt }}",
+        "options": {}
+      },
+      "id": "qa-chain",
+      "name": "سلسلة الأسئلة والأجوبة",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {
+          "temperature": 0.6,
+          "topK": 40,
+          "topP": 0.9
+        }
+      },
+      "id": "qa-ollama-model",
+      "name": "نموذج الأسئلة والأجوبة",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        980,
+        620
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "final-answer",
+              "name": "final_answer",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "sources-used",
+              "name": "sources_used",
+              "value": "={{ $('البحث في قاعدة المعرفة').item.json.length }}",
+              "type": "number"
+            },
+            {
+              "id": "response-time",
+              "name": "response_time",
+              "value": "={{ $now }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-final-response",
+      "name": "تنسيق الإجابة النهائية",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1180,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "محفز الأسئلة والأجوبة": {
+      "main": [
+        [
+          {
+            "node": "البحث في قاعدة المعرفة",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "البحث في قاعدة المعرفة": {
+      "main": [
+        [
+          {
+            "node": "تحضير السياق",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "تحضير السياق": {
+      "main": [
+        [
+          {
+            "node": "سلسلة الأسئلة والأجوبة",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "سلسلة الأسئلة والأجوبة": {
+      "main": [
+        [
+          {
+            "node": "تنسيق الإجابة النهائية",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "نموذج الأسئلة والأجوبة": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "سلسلة الأسئلة والأجوبة",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "knowledge-base-qa-v1",
+  "triggerCount": 0,
+  "tags": ["Arabic", "Q&A", "Knowledge Base", "Vector Search"]
+}
