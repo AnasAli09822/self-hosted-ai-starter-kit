@@ -1,0 +1,311 @@
+{
+  "createdAt": "2024-07-14T14:30:00.000Z",
+  "updatedAt": "2024-07-14T14:30:00.000Z",
+  "id": "GitHubInvitationHandler",
+  "name": "GitHub Invitation Handler - اقبل الدعوة",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "github-invitation",
+        "options": {}
+      },
+      "id": "webhook-trigger-001",
+      "name": "GitHub Invitation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "github-invitation-webhook-001"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract invitation details from webhook payload\nconst items = $input.all();\nconst invitationData = items[0].json;\n\n// Check if this is a GitHub invitation\nif (invitationData.action === 'created' && invitationData.invitation) {\n  return {\n    json: {\n      invitation_id: invitationData.invitation.id,\n      repository: invitationData.repository.full_name,\n      inviter: invitationData.invitation.inviter.login,\n      invitee: invitationData.invitation.invitee.login,\n      permissions: invitationData.invitation.permissions,\n      html_url: invitationData.invitation.html_url,\n      created_at: invitationData.invitation.created_at,\n      processInvitation: true\n    }\n  };\n}\n\n// Handle manual invitation acceptance (Arabic support)\nif (invitationData.message && invitationData.message.includes('اقبل الدعوة')) {\n  return {\n    json: {\n      invitation_url: invitationData.invitation_url || invitationData.url,\n      processInvitation: true,\n      manual: true,\n      message: 'Manual invitation acceptance requested'\n    }\n  };\n}\n\nreturn {\n  json: {\n    processInvitation: false,\n    message: 'Not a GitHub invitation event'\n  }\n};"
+      },
+      "id": "process-invitation-001",
+      "name": "Process Invitation Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.processInvitation}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-invitation-001",
+      "name": "Check If Valid Invitation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "repository",
+        "operation": "getInvitation",
+        "owner": "={{$json.repository ? $json.repository.split('/')[0] : 'AnasAli09822'}}",
+        "repository": "={{$json.repository ? $json.repository.split('/')[1] : 'self-hosted-ai-starter-kit'}}",
+        "invitationId": "={{$json.invitation_id || 1}}"
+      },
+      "id": "get-invitation-001",
+      "name": "Get Invitation Details",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [
+        900,
+        220
+      ],
+      "credentials": {
+        "githubApi": {
+          "id": "GitHubInvitationAPI",
+          "name": "GitHub API for Invitations"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "repository",
+        "operation": "acceptInvitation",
+        "invitationId": "={{$json.invitation_id || 1}}"
+      },
+      "id": "accept-invitation-001",
+      "name": "Accept GitHub Invitation",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        220
+      ],
+      "credentials": {
+        "githubApi": {
+          "id": "GitHubInvitationAPI",
+          "name": "GitHub API for Invitations"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {
+          "temperature": 0.7
+        },
+        "prompt": "=A GitHub repository invitation has been processed. Please provide a friendly response in both English and Arabic.\n\nInvitation Details:\n- Repository: {{$json.repository || 'self-hosted-ai-starter-kit'}}\n- Inviter: {{$json.inviter || 'Repository Owner'}}\n- Status: {{$json.state || 'Accepted'}}\n- Permissions: {{$json.permissions || 'read'}}\n\nPlease respond with:\n1. A confirmation message in English\n2. The same message in Arabic (اقبل الدعوة - invitation accepted)\n3. Next steps for the user\n\nKeep the response friendly and professional."
+      },
+      "id": "ai-response-001",
+      "name": "Generate AI Response",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        220
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log the successful invitation acceptance\nconst invitationData = $input.all();\nconst result = invitationData[0].json;\n\nconsole.log('✅ GitHub Invitation Processed Successfully');\nconsole.log('Repository:', result.repository || 'self-hosted-ai-starter-kit');\nconsole.log('Status:', result.state || 'Accepted');\nconsole.log('Response:', result.response || result.choices?.[0]?.message?.content || 'Invitation accepted');\n\nreturn {\n  json: {\n    success: true,\n    message: 'GitHub invitation has been accepted successfully',\n    arabicMessage: 'تم قبول الدعوة بنجاح',\n    repository: result.repository || 'self-hosted-ai-starter-kit',\n    status: result.state || 'accepted',\n    timestamp: new Date().toISOString(),\n    aiResponse: result.response || result.choices?.[0]?.message?.content || 'Invitation processed successfully'\n  }\n};"
+      },
+      "id": "log-success-001",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log when invitation is not processed\nconst items = $input.all();\nconst data = items[0].json;\n\nconsole.log('ℹ️ GitHub Invitation Not Processed');\nconsole.log('Reason:', data.message || 'Not a valid GitHub invitation');\n\nreturn {\n  json: {\n    success: false,\n    message: 'No GitHub invitation to process',\n    arabicMessage: 'لا توجد دعوة GitHub للمعالجة',\n    timestamp: new Date().toISOString(),\n    reason: data.message || 'Invalid invitation data'\n  }\n};"
+      },
+      "id": "log-no-action-001",
+      "name": "Log No Action",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        900,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "path": "invitation-status",
+        "options": {}
+      },
+      "id": "status-webhook-001",
+      "name": "Status Check Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        500
+      ],
+      "webhookId": "invitation-status-webhook-001"
+    },
+    {
+      "parameters": {
+        "resource": "user",
+        "operation": "getInvitations"
+      },
+      "id": "list-invitations-001",
+      "name": "List Pending Invitations",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [
+        460,
+        500
+      ],
+      "credentials": {
+        "githubApi": {
+          "id": "GitHubInvitationAPI",
+          "name": "GitHub API for Invitations"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format invitation list for display\nconst invitations = $input.all();\n\nif (!invitations || invitations.length === 0) {\n  return {\n    json: {\n      message: 'No pending GitHub invitations found',\n      arabicMessage: 'لا توجد دعوات GitHub معلقة',\n      invitations: [],\n      count: 0\n    }\n  };\n}\n\nconst formattedInvitations = invitations.map(inv => ({\n  id: inv.json.id,\n  repository: inv.json.repository.full_name,\n  inviter: inv.json.inviter.login,\n  permissions: inv.json.permissions,\n  created_at: inv.json.created_at,\n  html_url: inv.json.html_url\n}));\n\nreturn {\n  json: {\n    message: `Found ${formattedInvitations.length} pending invitation(s)`,\n    arabicMessage: `تم العثور على ${formattedInvitations.length} دعوة معلقة`,\n    invitations: formattedInvitations,\n    count: formattedInvitations.length,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-invitations-001",
+      "name": "Format Invitations List",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        680,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "GitHub Invitation Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Invitation Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Invitation Data": {
+      "main": [
+        [
+          {
+            "node": "Check If Valid Invitation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Valid Invitation": {
+      "main": [
+        [
+          {
+            "node": "Get Invitation Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log No Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invitation Details": {
+      "main": [
+        [
+          {
+            "node": "Accept GitHub Invitation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accept GitHub Invitation": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Response": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Check Webhook": {
+      "main": [
+        [
+          {
+            "node": "List Pending Invitations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Pending Invitations": {
+      "main": [
+        [
+          {
+            "node": "Format Invitations List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "github-invitation-handler-v1",
+  "triggerCount": 0,
+  "tags": [
+    "github",
+    "invitation",
+    "arabic",
+    "automation"
+  ]
+}
