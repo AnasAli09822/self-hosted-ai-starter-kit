@@ -1,0 +1,241 @@
+{
+  "createdAt": "2024-07-14T01:28:31.616Z",
+  "updatedAt": "2024-07-14T01:28:31.616Z",
+  "id": "translation-service",
+  "name": "خدمة الترجمة الذكية",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "translate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "translation-webhook",
+      "name": "استقبال طلبات الترجمة",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        300,
+        350
+      ],
+      "webhookId": "translation-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "source-text",
+              "name": "source_text",
+              "value": "={{ $json.body.text }}",
+              "type": "string"
+            },
+            {
+              "id": "source-language",
+              "name": "source_language",
+              "value": "={{ $json.body.source_language || 'auto' }}",
+              "type": "string"
+            },
+            {
+              "id": "target-language",
+              "name": "target_language",
+              "value": "={{ $json.body.target_language || 'arabic' }}",
+              "type": "string"
+            },
+            {
+              "id": "translation-prompt",
+              "name": "translation_prompt",
+              "value": "قم بترجمة النص التالي من {{ $json.source_language === 'auto' ? 'اللغة المكتشفة تلقائياً' : $json.source_language }} إلى {{ $json.target_language === 'arabic' ? 'العربية' : $json.target_language }}. قدم ترجمة دقيقة وطبيعية مع الحفاظ على المعنى والسياق:\\n\\nالنص المراد ترجمته:\\n{{ $json.source_text }}\\n\\nالترجمة:",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-translation",
+      "name": "تحضير الترجمة",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        520,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "systemMessage": "أنت خبير ترجمة محترف متخصص في ترجمة النصوص بين اللغات المختلفة. مهمتك هي تقديم ترجمات دقيقة وطبيعية مع الحفاظ على المعنى والسياق والنبرة الأصلية للنص.",
+        "humanMessage": "={{ $json.translation_prompt }}",
+        "options": {}
+      },
+      "id": "translation-chain",
+      "name": "سلسلة الترجمة",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        740,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {
+          "temperature": 0.3,
+          "topK": 30,
+          "topP": 0.8
+        }
+      },
+      "id": "translation-ollama-model",
+      "name": "نموذج الترجمة",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        760,
+        570
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "translated-text",
+              "name": "translated_text",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "original-text",
+              "name": "original_text",
+              "value": "={{ $('تحضير الترجمة').item.json.source_text }}",
+              "type": "string"
+            },
+            {
+              "id": "source-lang",
+              "name": "source_language",
+              "value": "={{ $('تحضير الترجمة').item.json.source_language }}",
+              "type": "string"
+            },
+            {
+              "id": "target-lang",
+              "name": "target_language",
+              "value": "={{ $('تحضير الترجمة').item.json.target_language }}",
+              "type": "string"
+            },
+            {
+              "id": "translation-time",
+              "name": "translation_time",
+              "value": "={{ $now }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-translation-response",
+      "name": "تنسيق استجابة الترجمة",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        960,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "translation-response",
+      "name": "إرسال الترجمة",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1180,
+        350
+      ]
+    }
+  ],
+  "connections": {
+    "استقبال طلبات الترجمة": {
+      "main": [
+        [
+          {
+            "node": "تحضير الترجمة",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "تحضير الترجمة": {
+      "main": [
+        [
+          {
+            "node": "سلسلة الترجمة",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "سلسلة الترجمة": {
+      "main": [
+        [
+          {
+            "node": "تنسيق استجابة الترجمة",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "نموذج الترجمة": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "سلسلة الترجمة",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "تنسيق استجابة الترجمة": {
+      "main": [
+        [
+          {
+            "node": "إرسال الترجمة",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "translation-service-v1",
+  "triggerCount": 0,
+  "tags": ["Arabic", "Translation", "Multilingual", "API"]
+}
