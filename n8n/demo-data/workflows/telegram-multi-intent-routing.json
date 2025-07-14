@@ -1,0 +1,336 @@
+{
+  "createdAt": "2024-12-19T12:00:00.000Z",
+  "updatedAt": "2024-12-19T12:00:00.000Z",
+  "id": "telegram-multi-intent-routing",
+  "name": "Telegram Multi-Intent Routing",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger-node",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "telegram-webhook-id",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-credentials-id",
+          "name": "Telegram Bot Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "platform",
+              "value": "telegram"
+            },
+            {
+              "name": "user_id",
+              "value": "={{ $json.message.from.id }}"
+            },
+            {
+              "name": "chat_id",
+              "value": "={{ $json.message.chat.id }}"
+            },
+            {
+              "name": "message_text",
+              "value": "={{ $json.message.text }}"
+            },
+            {
+              "name": "user_first_name",
+              "value": "={{ $json.message.from.first_name }}"
+            },
+            {
+              "name": "user_last_name",
+              "value": "={{ $json.message.from.last_name || '' }}"
+            },
+            {
+              "name": "username",
+              "value": "={{ $json.message.from.username || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-metadata-node",
+      "name": "Set Metadata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "support-condition",
+              "leftValue": "={{ $json.message_text }}",
+              "rightValue": "دعم",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "sales-condition",
+              "leftValue": "={{ $json.message_text }}",
+              "rightValue": "مبيعات",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "marketing-condition",
+              "leftValue": "={{ $json.message_text }}",
+              "rightValue": "تسويق",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "switch-intent-node",
+      "name": "Switch Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "مرحباً! شكراً لتواصلك معنا بخصوص الدعم الفني. فريقنا سيقوم بمساعدتك قريباً.\n\nHello! Thank you for contacting us regarding technical support. Our team will assist you shortly.",
+        "additionalFields": {
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "📞 اتصل بنا / Call Us",
+                  "callback_data": "contact_support"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "id": "support-reply-node",
+      "name": "Support Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        180
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-credentials-id",
+          "name": "Telegram Bot Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "أهلاً وسهلاً! نحن سعداء بتواصلك معنا بخصوص المبيعات. سنتواصل معك قريباً لمناقشة احتياجاتك.\n\nWelcome! We're happy you contacted us about sales. We'll reach out to you soon to discuss your needs.",
+        "additionalFields": {
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "💼 معلومات المنتج / Product Info",
+                  "callback_data": "product_info"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "id": "sales-reply-node",
+      "name": "Sales Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-credentials-id",
+          "name": "Telegram Bot Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "شكراً لاهتمامك بخدماتنا التسويقية! فريق التسويق سيتواصل معك قريباً لمناقشة الفرص المتاحة.\n\nThank you for your interest in our marketing services! Our marketing team will contact you soon to discuss available opportunities.",
+        "additionalFields": {
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "📈 خدمات التسويق / Marketing Services",
+                  "callback_data": "marketing_services"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "id": "marketing-reply-node",
+      "name": "Marketing Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        420
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-credentials-id",
+          "name": "Telegram Bot Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "مرحباً! شكراً لرسالتك. لم أتمكن من تحديد نوع الاستفسار. يرجى اختيار إحدى الخيارات التالية:\n\n🔧 الدعم الفني - اكتب 'دعم'\n💼 المبيعات - اكتب 'مبيعات'\n📈 التسويق - اكتب 'تسويق'\n\nHello! Thanks for your message. I couldn't identify the type of inquiry. Please choose one of the following options:\n\n🔧 Technical Support - type 'دعم'\n💼 Sales - type 'مبيعات'\n📈 Marketing - type 'تسويق'",
+        "additionalFields": {
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "🔧 دعم / Support",
+                  "callback_data": "support"
+                },
+                {
+                  "text": "💼 مبيعات / Sales",
+                  "callback_data": "sales"
+                }
+              ],
+              [
+                {
+                  "text": "📈 تسويق / Marketing",
+                  "callback_data": "marketing"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "id": "default-reply-node",
+      "name": "Default Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        540
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-credentials-id",
+          "name": "Telegram Bot Credentials"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Metadata": {
+      "main": [
+        [
+          {
+            "node": "Switch Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Intent": {
+      "main": [
+        [
+          {
+            "node": "Support Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sales Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marketing Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Default Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "telegram-multi-intent-v1",
+  "triggerCount": 0,
+  "tags": [
+    "telegram",
+    "multi-intent",
+    "routing",
+    "arabic",
+    "customer-service"
+  ]
+}
