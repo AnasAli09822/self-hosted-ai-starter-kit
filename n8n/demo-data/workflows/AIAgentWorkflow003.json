@@ -1,0 +1,248 @@
+{
+  "createdAt": "2024-12-19T11:00:00.000Z",
+  "updatedAt": "2024-12-19T11:00:00.000Z",
+  "id": "AIAgentWorkflow003",
+  "name": "Advanced AI Agent with Tools",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "agent-trigger-001",
+      "name": "Agent Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        400
+      ],
+      "webhookId": "agent-chat-001"
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "You are a helpful AI assistant with access to various tools. You can:\n1. Search through document databases\n2. Perform calculations\n3. Get current time information\n4. Access file system\n\nAlways use the appropriate tool when needed and provide detailed, helpful responses.",
+        "options": {
+          "systemMessage": "You are a professional AI assistant. Be helpful, accurate, and concise."
+        }
+      },
+      "id": "ai-agent-001",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        420,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "agent-llm-001",
+      "name": "Agent LLM",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        420,
+        620
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "vector_search",
+        "description": "Search through document database for relevant information. Use this when user asks questions about documents or specific topics that might be in the knowledge base.",
+        "workflowId": "VectorSearchWorkflow002",
+        "fields": {
+          "values": [
+            {
+              "name": "question",
+              "type": "string",
+              "description": "The search query or question to find relevant documents"
+            }
+          ]
+        }
+      },
+      "id": "search-tool-001",
+      "name": "Document Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "name": "calculator",
+        "description": "Perform mathematical calculations. Use this for any arithmetic operations or mathematical problem solving."
+      },
+      "id": "calc-tool-001",
+      "name": "Calculator Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        640,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "name": "current_time",
+        "description": "Get the current date and time information. Use this when user asks about current time, date, or scheduling."
+      },
+      "id": "time-tool-001",
+      "name": "Current Time Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        640,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "name": "file_reader",
+        "description": "Read files from the shared directory. Use this when user asks to read or analyze specific files.",
+        "workflowId": "{{ $workflow.id }}",
+        "fields": {
+          "values": [
+            {
+              "name": "filename",
+              "type": "string",
+              "description": "Name of the file to read from /data/shared directory"
+            }
+          ]
+        }
+      },
+      "id": "file-tool-001",
+      "name": "File Reader Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        640,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "maxIterations": 10,
+        "options": {
+          "maxExecutionTime": 30
+        }
+      },
+      "id": "memory-001",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1,
+      "position": [
+        200,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "Agent Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent LLM": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Current Time Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "File Reader Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "ai-agent-v1",
+  "triggerCount": 0,
+  "tags": [
+    "ai-agent",
+    "tools",
+    "conversation",
+    "advanced"
+  ]
+}

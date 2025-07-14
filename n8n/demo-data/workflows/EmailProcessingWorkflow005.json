@@ -1,0 +1,446 @@
+{
+  "createdAt": "2024-12-19T12:00:00.000Z",
+  "updatedAt": "2024-12-19T12:00:00.000Z",
+  "id": "EmailProcessingWorkflow005",
+  "name": "Intelligent Email Processing Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "email-trigger-001",
+      "name": "Email Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        200,
+        400
+      ],
+      "credentials": {
+        "imap": {
+          "id": "email-credentials-001",
+          "name": "Email Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.subject }}",
+              "operation": "contains",
+              "value2": "URGENT"
+            },
+            {
+              "value1": "={{ $json.subject }}",
+              "operation": "contains",
+              "value2": "IMPORTANT"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "priority-filter-001",
+      "name": "Priority Filter",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        420,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "id": "email-classifier-001",
+      "name": "Email Classifier",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        640,
+        620
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Please analyze the following email and classify it into one of these categories:\n1. SUPPORT_REQUEST - Customer needs help or has an issue\n2. BUSINESS_INQUIRY - Potential business opportunity or partnership\n3. COMPLAINT - Customer is expressing dissatisfaction\n4. INFORMATION_REQUEST - Someone asking for information\n5. SPAM - Unsolicited or promotional content\n6. INTERNAL - Internal company communication\n7. OTHER - Doesn't fit other categories\n\nAlso provide:\n- Sentiment (POSITIVE, NEGATIVE, NEUTRAL)\n- Priority level (HIGH, MEDIUM, LOW)\n- Suggested response time (IMMEDIATE, WITHIN_24H, WITHIN_WEEK)\n- Key topics (comma-separated)\n\nEmail Subject: {{ $json.subject }}\nFrom: {{ $json.from }}\nContent: {{ $json.text }}\n\nRespond in JSON format:\n{\n  \"category\": \"CATEGORY_NAME\",\n  \"sentiment\": \"SENTIMENT\",\n  \"priority\": \"PRIORITY_LEVEL\",\n  \"response_time\": \"SUGGESTED_TIME\",\n  \"topics\": [\"topic1\", \"topic2\"],\n  \"summary\": \"Brief summary of the email\",\n  \"action_required\": \"What action is needed\"\n}"
+      },
+      "id": "classify-email-001",
+      "name": "Classify Email",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the AI classification result\nconst classification = $input.first().json.text;\nconst originalEmail = $('Email Trigger').first().json;\n\ntry {\n  const parsed = JSON.parse(classification);\n  \n  return {\n    json: {\n      email_id: originalEmail.uid,\n      subject: originalEmail.subject,\n      from: originalEmail.from,\n      date: originalEmail.date,\n      classification: parsed,\n      raw_text: originalEmail.text,\n      html_content: originalEmail.html,\n      processed_at: new Date().toISOString()\n    }\n  };\n} catch (error) {\n  return {\n    json: {\n      email_id: originalEmail.uid,\n      subject: originalEmail.subject,\n      from: originalEmail.from,\n      date: originalEmail.date,\n      classification: {\n        category: 'OTHER',\n        sentiment: 'NEUTRAL',\n        priority: 'MEDIUM',\n        response_time: 'WITHIN_24H',\n        topics: [],\n        summary: 'Classification failed',\n        action_required: 'Manual review needed'\n      },\n      classification_error: error.message,\n      raw_text: originalEmail.text,\n      processed_at: new Date().toISOString()\n    }\n  };\n}"
+      },
+      "id": "parse-classification-001",
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.classification.category }}",
+              "value2": "SUPPORT_REQUEST"
+            },
+            {
+              "value1": "={{ $json.classification.category }}",
+              "value2": "BUSINESS_INQUIRY"
+            },
+            {
+              "value1": "={{ $json.classification.category }}",
+              "value2": "COMPLAINT"
+            },
+            {
+              "value1": "={{ $json.classification.category }}",
+              "value2": "INFORMATION_REQUEST"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "route-by-category-001",
+      "name": "Route by Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "id": "response-generator-001",
+      "name": "Response Generator",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        620
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Generate a professional email response based on the classification and original email content.\n\nOriginal Email:\nFrom: {{ $json.from }}\nSubject: {{ $json.subject }}\nContent: {{ $json.raw_text }}\n\nClassification:\nCategory: {{ $json.classification.category }}\nSentiment: {{ $json.classification.sentiment }}\nPriority: {{ $json.classification.priority }}\nSummary: {{ $json.classification.summary }}\n\nPlease generate:\n1. A professional email response\n2. Subject line for the response\n3. Any follow-up actions needed\n\nRespond in JSON format:\n{\n  \"response_subject\": \"Re: [Original Subject]\",\n  \"response_body\": \"Professional email response\",\n  \"follow_up_actions\": [\"action1\", \"action2\"],\n  \"internal_notes\": \"Notes for internal team\"\n}"
+      },
+      "id": "generate-response-001",
+      "name": "Generate Response",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        1300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "subject": "={{ JSON.parse($json.text).response_subject }}",
+        "emailContent": "={{ JSON.parse($json.text).response_body }}",
+        "toEmail": "={{ $('Parse Classification').first().json.from }}"
+      },
+      "id": "send-response-001",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials-001",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "table": "email_processing_log",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "email_id": "={{ $('Parse Classification').first().json.email_id }}",
+            "subject": "={{ $('Parse Classification').first().json.subject }}",
+            "from_address": "={{ $('Parse Classification').first().json.from }}",
+            "category": "={{ $('Parse Classification').first().json.classification.category }}",
+            "sentiment": "={{ $('Parse Classification').first().json.classification.sentiment }}",
+            "priority": "={{ $('Parse Classification').first().json.classification.priority }}",
+            "response_time": "={{ $('Parse Classification').first().json.classification.response_time }}",
+            "topics": "={{ JSON.stringify($('Parse Classification').first().json.classification.topics) }}",
+            "summary": "={{ $('Parse Classification').first().json.classification.summary }}",
+            "action_required": "={{ $('Parse Classification').first().json.classification.action_required }}",
+            "processed_at": "={{ $('Parse Classification').first().json.processed_at }}",
+            "response_sent": "={{ $json.messageId ? 'true' : 'false' }}",
+            "response_generated": "={{ JSON.parse($('Generate Response').first().json.text).response_body }}"
+          }
+        }
+      },
+      "id": "log-processing-001",
+      "name": "Log Processing",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1520,
+        500
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials-001",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.classification.priority }}",
+              "value2": "HIGH"
+            }
+          ]
+        }
+      },
+      "id": "high-priority-check-001",
+      "name": "High Priority Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "subject": "🚨 HIGH PRIORITY EMAIL ALERT",
+        "emailContent": "A high priority email has been received and processed:\n\nFrom: {{ $json.from }}\nSubject: {{ $json.subject }}\nCategory: {{ $json.classification.category }}\nSentiment: {{ $json.classification.sentiment }}\nSummary: {{ $json.classification.summary }}\n\nAction Required: {{ $json.classification.action_required }}\n\nPlease review immediately.",
+        "toEmail": "admin@company.com"
+      },
+      "id": "alert-admin-001",
+      "name": "Alert Admin",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        100
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials-001",
+          "name": "SMTP Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Priority Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Priority Filter": {
+      "main": [
+        [
+          {
+            "node": "Classify Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Classifier": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Email",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Response",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Email": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Route by Category",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "High Priority Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Category": {
+      "main": [
+        [
+          {
+            "node": "Generate Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Response Generator": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Response",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Response": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Response": {
+      "main": [
+        [
+          {
+            "node": "Log Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "High Priority Check": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "email-processing-v1",
+  "triggerCount": 0,
+  "tags": [
+    "email",
+    "automation",
+    "ai-classification",
+    "communication"
+  ]
+}

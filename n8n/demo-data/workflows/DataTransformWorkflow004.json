@@ -1,0 +1,310 @@
+{
+  "createdAt": "2024-12-19T11:30:00.000Z",
+  "updatedAt": "2024-12-19T11:30:00.000Z",
+  "id": "DataTransformWorkflow004",
+  "name": "Data Processing and Analysis Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "process-data",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "data-webhook-001",
+      "name": "Data Input Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        400
+      ],
+      "webhookId": "data-input-001"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.data_type }}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{ $json.body.data }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "validate-input-001",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        420,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.data_type }}",
+              "value2": "json"
+            },
+            {
+              "value1": "={{ $json.body.data_type }}",
+              "value2": "csv"
+            },
+            {
+              "value1": "={{ $json.body.data_type }}",
+              "value2": "text"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "route-data-type-001",
+      "name": "Route by Data Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process JSON data\nconst data = $input.first().json.body.data;\nconst processedData = [];\n\ntry {\n  const jsonData = typeof data === 'string' ? JSON.parse(data) : data;\n  \n  if (Array.isArray(jsonData)) {\n    jsonData.forEach((item, index) => {\n      processedData.push({\n        index: index,\n        data: item,\n        type: typeof item,\n        processed_at: new Date().toISOString()\n      });\n    });\n  } else {\n    processedData.push({\n      index: 0,\n      data: jsonData,\n      type: typeof jsonData,\n      processed_at: new Date().toISOString()\n    });\n  }\n} catch (error) {\n  processedData.push({\n    error: 'Invalid JSON data',\n    message: error.message\n  });\n}\n\nreturn processedData.map(item => ({ json: item }));"
+      },
+      "id": "process-json-001",
+      "name": "Process JSON Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process CSV data\nconst csvData = $input.first().json.body.data;\nconst processedData = [];\n\ntry {\n  const lines = csvData.split('\\n').filter(line => line.trim());\n  const headers = lines[0].split(',').map(h => h.trim());\n  \n  for (let i = 1; i < lines.length; i++) {\n    const values = lines[i].split(',').map(v => v.trim());\n    const record = {};\n    \n    headers.forEach((header, index) => {\n      record[header] = values[index] || '';\n    });\n    \n    processedData.push({\n      row: i,\n      data: record,\n      processed_at: new Date().toISOString()\n    });\n  }\n} catch (error) {\n  processedData.push({\n    error: 'Invalid CSV data',\n    message: error.message\n  });\n}\n\nreturn processedData.map(item => ({ json: item }));"
+      },
+      "id": "process-csv-001",
+      "name": "Process CSV Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "id": "text-analyzer-001",
+      "name": "Text Analyzer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        860,
+        720
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Please analyze the following text and provide:\n1. Summary\n2. Key themes\n3. Sentiment analysis\n4. Word count\n5. Language detection\n\nText to analyze:\n{{ $('Data Input Webhook').first().json.body.data }}"
+      },
+      "id": "analyze-text-001",
+      "name": "Analyze Text",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        860,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate results from all processing branches\nconst results = {\n  processing_summary: {\n    total_items: $input.all().length,\n    processed_at: new Date().toISOString(),\n    data_type: $('Data Input Webhook').first().json.body.data_type\n  },\n  processed_data: [],\n  analysis: null\n};\n\n// Collect all processed data\n$input.all().forEach(item => {\n  if (item.json.analysis) {\n    results.analysis = item.json.analysis;\n  } else if (item.json.text) {\n    results.analysis = item.json.text;\n  } else {\n    results.processed_data.push(item.json);\n  }\n});\n\n// Calculate statistics for structured data\nif (results.processed_data.length > 0 && !results.processed_data[0].error) {\n  results.statistics = {\n    total_records: results.processed_data.length,\n    has_errors: results.processed_data.some(item => item.error),\n    first_record: results.processed_data[0],\n    last_record: results.processed_data[results.processed_data.length - 1]\n  };\n}\n\nreturn { json: results };"
+      },
+      "id": "aggregate-results-001",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json, null, 2) }}"
+      },
+      "id": "response-001",
+      "name": "API Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"Invalid input\",\n  \"message\": \"Please provide both 'data_type' and 'data' in the request body\",\n  \"example\": {\n    \"data_type\": \"json\",\n    \"data\": \"[{\\\"name\\\": \\\"John\\\", \\\"age\\\": 30}]\"\n  },\n  \"supported_types\": [\"json\", \"csv\", \"text\"]\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "error-response-001",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        640,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Data Input Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Route by Data Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Data Type": {
+      "main": [
+        [
+          {
+            "node": "Process JSON Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process CSV Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analyze Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process JSON Data": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process CSV Data": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Analyzer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analyze Text",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Text": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "API Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "data-transform-v1",
+  "triggerCount": 0,
+  "tags": [
+    "data-processing",
+    "analytics",
+    "api",
+    "transformation"
+  ]
+}
