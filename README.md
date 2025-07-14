@@ -25,6 +25,8 @@ store with an comprehensive API
 ✅ [**PostgreSQL**](https://www.postgresql.org/) -  Workhorse of the Data
 Engineering world, handles large amounts of data safely.
 
+✅ [**GitHub Integration**](./GITHUB_INVITATION_HANDLER.md) - Automated GitHub repository invitation handling with bilingual support (English/Arabic)
+
 ### What you can build
 
 ⭐️ **AI Agents** for scheduling appointments
@@ -34,6 +36,8 @@ Engineering world, handles large amounts of data safely.
 ⭐️ **Smarter Slack Bots** for enhanced company communications and IT operations
 
 ⭐️ **Private Financial Document Analysis** at minimal cost
+
+⭐️ **GitHub Invitation Management** - Automatically accept repository invitations with Arabic support (اقبل الدعوة)
 
 ## Installation
 
