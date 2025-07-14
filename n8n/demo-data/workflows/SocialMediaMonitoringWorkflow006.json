@@ -1,0 +1,457 @@
+{
+  "createdAt": "2024-12-19T12:30:00.000Z",
+  "updatedAt": "2024-12-19T12:30:00.000Z",
+  "id": "SocialMediaMonitoringWorkflow006",
+  "name": "Social Media Monitoring and Analysis",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "search",
+        "operation": "tweets",
+        "q": "{{ $json.search_terms || 'AI automation' }}",
+        "additionalFields": {
+          "count": 50,
+          "result_type": "recent"
+        }
+      },
+      "id": "twitter-search-001",
+      "name": "Twitter Search",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 1,
+      "position": [
+        420,
+        300
+      ],
+      "credentials": {
+        "twitterOAuth2Api": {
+          "id": "twitter-credentials-001",
+          "name": "Twitter API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "searchPosts",
+        "query": "{{ $json.search_terms || 'AI automation' }}",
+        "additionalFields": {
+          "limit": 50
+        }
+      },
+      "id": "linkedin-search-001",
+      "name": "LinkedIn Search",
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [
+        420,
+        500
+      ],
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "linkedin-credentials-001",
+          "name": "LinkedIn API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalizedPosts = []; $input.all().forEach(item => { const post = item.json; let normalized = { id: post.id || post.post_id, platform: 'unknown', content: '', author: '', created_at: '', engagement: { likes: 0, shares: 0, comments: 0 }, raw_data: post }; if (post.full_text || post.text) { normalized.platform = 'twitter'; normalized.content = post.full_text || post.text; normalized.author = post.user?.screen_name || post.user?.name; normalized.created_at = post.created_at; normalized.engagement = { likes: post.favorite_count || 0, shares: post.retweet_count || 0, comments: post.reply_count || 0 }; } if (post.specificContent) { normalized.platform = 'linkedin'; normalized.content = post.specificContent.com?.linkedin?.ugc?.shareCommentary?.text || ''; normalized.author = post.author; normalized.created_at = post.created?.time; normalized.engagement = { likes: post.socialDetail?.totalSocialActivityCounts?.numLikes || 0, shares: post.socialDetail?.totalSocialActivityCounts?.numShares || 0, comments: post.socialDetail?.totalSocialActivityCounts?.numComments || 0 }; } normalized.processed_at = new Date().toISOString(); normalizedPosts.push(normalized); }); return normalizedPosts.map(post => ({ json: post }));"
+      },
+      "id": "normalize-posts-001",
+      "name": "Normalize Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.content }}",
+              "operation": "isNotEmpty"
+            }
+          ],
+          "number": [
+            {
+              "value1": "={{ $json.content.length }}",
+              "operation": "largerEqual",
+              "value2": 10
+            }
+          ]
+        }
+      },
+      "id": "filter-valid-posts-001",
+      "name": "Filter Valid Posts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        860,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "id": "sentiment-analyzer-001",
+      "name": "Sentiment Analyzer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        620
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Analyze the following social media post and provide detailed insights. Post Content: {{ $json.content }}. Platform: {{ $json.platform }}. Author: {{ $json.author }}. Engagement: {{ $json.engagement.likes }} likes, {{ $json.engagement.shares }} shares, {{ $json.engagement.comments }} comments. Please provide analysis in JSON format with sentiment, sentiment_score, key_topics, mentions, hashtags, language, content_type, urgency, brand_mentions, potential_leads, requires_response, summary, and action_items fields."
+      },
+      "id": "analyze-post-001",
+      "name": "Analyze Post",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        1080,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const post = $input.first().json; const analysisText = $input.first().json.text; try { const analysis = JSON.parse(analysisText); return { json: { post_id: post.id, platform: post.platform, content: post.content, author: post.author, created_at: post.created_at, engagement: post.engagement, analysis: analysis, processed_at: new Date().toISOString(), raw_data: post.raw_data } }; } catch (error) { return { json: { post_id: post.id, platform: post.platform, content: post.content, author: post.author, created_at: post.created_at, engagement: post.engagement, analysis: { sentiment: 'NEUTRAL', sentiment_score: 0, key_topics: [], mentions: [], hashtags: [], language: 'unknown', content_type: 'text', urgency: 'LOW', brand_mentions: [], potential_leads: false, requires_response: false, summary: 'Analysis failed', action_items: [] }, analysis_error: error.message, processed_at: new Date().toISOString() } }; }"
+      },
+      "id": "merge-analysis-001",
+      "name": "Merge Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.analysis.urgency }}",
+              "value2": "HIGH"
+            }
+          ],
+          "boolean": [
+            {
+              "value1": "={{ $json.analysis.requires_response }}",
+              "value2": true
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "urgent-filter-001",
+      "name": "Urgent Filter",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "table": "social_media_monitoring",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "post_id": "={{ $json.post_id }}",
+            "platform": "={{ $json.platform }}",
+            "content": "={{ $json.content }}",
+            "author": "={{ $json.author }}",
+            "created_at": "={{ $json.created_at }}",
+            "likes": "={{ $json.engagement.likes }}",
+            "shares": "={{ $json.engagement.shares }}",
+            "comments": "={{ $json.engagement.comments }}",
+            "sentiment": "={{ $json.analysis.sentiment }}",
+            "sentiment_score": "={{ $json.analysis.sentiment_score }}",
+            "key_topics": "={{ JSON.stringify($json.analysis.key_topics) }}",
+            "mentions": "={{ JSON.stringify($json.analysis.mentions) }}",
+            "hashtags": "={{ JSON.stringify($json.analysis.hashtags) }}",
+            "language": "={{ $json.analysis.language }}",
+            "content_type": "={{ $json.analysis.content_type }}",
+            "urgency": "={{ $json.analysis.urgency }}",
+            "brand_mentions": "={{ JSON.stringify($json.analysis.brand_mentions) }}",
+            "potential_leads": "={{ $json.analysis.potential_leads }}",
+            "requires_response": "={{ $json.analysis.requires_response }}",
+            "summary": "={{ $json.analysis.summary }}",
+            "action_items": "={{ JSON.stringify($json.analysis.action_items) }}",
+            "processed_at": "={{ $json.processed_at }}"
+          }
+        }
+      },
+      "id": "store-analysis-001",
+      "name": "Store Analysis",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1740,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials-001",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "subject": "Social Media Alert - Urgent Response Required",
+        "emailContent": "An urgent social media post requires immediate attention. Platform: {{ $json.platform }}. Author: {{ $json.author }}. Content: {{ $json.content }}. Analysis: Sentiment: {{ $json.analysis.sentiment }}, Urgency: {{ $json.analysis.urgency }}, Summary: {{ $json.analysis.summary }}. Please respond immediately.",
+        "toEmail": "social-media@company.com"
+      },
+      "id": "urgent-alert-001",
+      "name": "Urgent Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        200
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials-001",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.analysis.potential_leads }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "leads-filter-001",
+      "name": "Leads Filter",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "table": "potential_leads",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "source": "social_media",
+            "platform": "={{ $json.platform }}",
+            "contact_info": "={{ $json.author }}",
+            "content": "={{ $json.content }}",
+            "sentiment": "={{ $json.analysis.sentiment }}",
+            "topics": "={{ JSON.stringify($json.analysis.key_topics) }}",
+            "engagement_score": "={{ $json.engagement.likes + $json.engagement.shares + $json.engagement.comments }}",
+            "created_at": "={{ $json.created_at }}",
+            "processed_at": "={{ $json.processed_at }}"
+          }
+        }
+      },
+      "id": "store-lead-001",
+      "name": "Store Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1740,
+        600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials-001",
+          "name": "PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Twitter Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LinkedIn Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter Search": {
+      "main": [
+        [
+          {
+            "node": "Normalize Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn Search": {
+      "main": [
+        [
+          {
+            "node": "Normalize Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Posts": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Posts": {
+      "main": [
+        [
+          {
+            "node": "Analyze Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sentiment Analyzer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analyze Post",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Post": {
+      "main": [
+        [
+          {
+            "node": "Merge Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Analysis": {
+      "main": [
+        [
+          {
+            "node": "Urgent Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Leads Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent Filter": {
+      "main": [
+        [
+          {
+            "node": "Urgent Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leads Filter": {
+      "main": [
+        [
+          {
+            "node": "Store Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "social-media-monitoring-v1",
+  "triggerCount": 0,
+  "tags": [
+    "social-media",
+    "monitoring",
+    "sentiment-analysis",
+    "lead-generation"
+  ]
+}

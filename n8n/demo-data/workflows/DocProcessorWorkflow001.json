@@ -1,0 +1,239 @@
+{
+  "createdAt": "2024-12-19T10:00:00.000Z",
+  "updatedAt": "2024-12-19T10:00:00.000Z",
+  "id": "DocProcessorWorkflow001",
+  "name": "PDF Document Analysis Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/data/shared/documents",
+        "watchFolder": true,
+        "fileExtensions": "pdf"
+      },
+      "id": "file-trigger-001",
+      "name": "PDF File Trigger",
+      "type": "n8n-nodes-base.localFileTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "={{ $json.name }}",
+        "dataPropertyName": "data"
+      },
+      "id": "read-pdf-001",
+      "name": "Read PDF File",
+      "type": "n8n-nodes-base.readPdf",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chunkSize": 1000,
+        "chunkOverlap": 200
+      },
+      "id": "text-splitter-001",
+      "name": "Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:latest",
+        "options": {}
+      },
+      "id": "embeddings-001",
+      "name": "Ollama Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        680,
+        520
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "qdrantCollection": "documents"
+      },
+      "id": "vector-store-001",
+      "name": "Store in Qdrant",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "qdrantApi": {
+          "id": "sFfERYppMeBnFNeA",
+          "name": "Local QdrantApi database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "id": "llm-summarizer-001",
+      "name": "Document Summarizer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        520
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Please provide a comprehensive summary of the following document. Include key points, main themes, and important details:\n\n{{ $json.pageContent }}"
+      },
+      "id": "summary-prompt-001",
+      "name": "Summary Prompt",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "={{ $json.name.replace('.pdf', '_summary.txt') }}",
+        "fileContent": "=Document Summary for {{ $json.name }}:\n\n{{ $json.text }}"
+      },
+      "id": "save-summary-001",
+      "name": "Save Summary",
+      "type": "n8n-nodes-base.filesReadWrite",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "PDF File Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read PDF File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read PDF File": {
+      "main": [
+        [
+          {
+            "node": "Text Splitter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Splitter": {
+      "main": [
+        [
+          {
+            "node": "Store in Qdrant",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Summary Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Store in Qdrant",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Splitter": {
+      "ai_document": [
+        [
+          {
+            "node": "Store in Qdrant",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Summarizer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summary Prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary Prompt": {
+      "main": [
+        [
+          {
+            "node": "Save Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "doc-processor-v1",
+  "triggerCount": 0,
+  "tags": [
+    "document-processing",
+    "ai",
+    "pdf",
+    "vector-store"
+  ]
+}
