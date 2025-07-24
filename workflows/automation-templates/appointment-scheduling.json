@@ -1,0 +1,489 @@
+{
+  "name": "AI Appointment Scheduling System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "schedule-appointment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "appointment-request-webhook",
+      "name": "Appointment Request Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "appointment-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and validate appointment request data\nconst appointmentData = $input.first().json;\n\n// Parse and validate the requested date/time\nlet requestedDateTime;\nif (appointmentData.datetime) {\n  requestedDateTime = new Date(appointmentData.datetime);\n} else if (appointmentData.date && appointmentData.time) {\n  requestedDateTime = new Date(`${appointmentData.date}T${appointmentData.time}`);\n} else {\n  requestedDateTime = null;\n}\n\n// Validate business hours (9 AM - 6 PM, Monday-Friday)\nconst isValidTime = (date) => {\n  if (!date) return false;\n  const day = date.getDay(); // 0 = Sunday, 1 = Monday, etc.\n  const hour = date.getHours();\n  \n  // Check if it's Monday-Friday (1-5) and between 9 AM - 6 PM\n  return day >= 1 && day <= 5 && hour >= 9 && hour < 18;\n};\n\nconst isValid = isValidTime(requestedDateTime);\n\nreturn {\n  customer_name: appointmentData.customer_name || appointmentData.name || '',\n  customer_email: appointmentData.customer_email || appointmentData.email || '',\n  customer_phone: appointmentData.customer_phone || appointmentData.phone || '',\n  company: appointmentData.company || '',\n  appointment_type: appointmentData.appointment_type || 'consultation',\n  requested_datetime: requestedDateTime ? requestedDateTime.toISOString() : null,\n  duration_minutes: parseInt(appointmentData.duration_minutes) || 30,\n  message: appointmentData.message || '',\n  source: appointmentData.source || 'website',\n  lead_id: appointmentData.lead_id || null,\n  conversation_id: appointmentData.conversation_id || null,\n  is_valid_time: isValid,\n  timezone: appointmentData.timezone || 'UTC',\n  preferred_method: appointmentData.preferred_method || 'video_call',\n  metadata: {\n    user_agent: appointmentData.user_agent || '',\n    ip_address: appointmentData.ip_address || '',\n    referrer: appointmentData.referrer || '',\n    utm_source: appointmentData.utm_source || '',\n    utm_campaign: appointmentData.utm_campaign || ''\n  }\n};"
+      },
+      "id": "process-appointment-request",
+      "name": "Process Appointment Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_valid_time }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            },
+            {
+              "leftValue": "={{ $json.customer_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-appointment-request",
+      "name": "Validate Appointment Request",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "GET",
+        "url": "=http://supabase-kong:8000/rest/v1/appointments?scheduled_at=gte.{{ new Date($('process-appointment-request').first().json.requested_datetime).toISOString().split('T')[0] }}T{{ String(new Date($('process-appointment-request').first().json.requested_datetime).getHours()).padStart(2, '0') }}:00:00&scheduled_at=lt.{{ new Date($('process-appointment-request').first().json.requested_datetime).toISOString().split('T')[0] }}T{{ String(new Date($('process-appointment-request').first().json.requested_datetime).getHours() + 1).padStart(2, '0') }}:00:00&status=eq.scheduled",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-availability",
+      "name": "Check Availability",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 240]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-available",
+      "name": "Check if Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1000, 240]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/appointments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $('process-appointment-request').first().json.client_id || 'default-client-id' }}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{ $('process-appointment-request').first().json.lead_id }}"
+            },
+            {
+              "name": "conversation_id",
+              "value": "={{ $('process-appointment-request').first().json.conversation_id }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $('process-appointment-request').first().json.appointment_type }} with {{ $('process-appointment-request').first().json.customer_name }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $('process-appointment-request').first().json.message }}"
+            },
+            {
+              "name": "scheduled_at",
+              "value": "={{ $('process-appointment-request').first().json.requested_datetime }}"
+            },
+            {
+              "name": "duration_minutes",
+              "value": "={{ $('process-appointment-request').first().json.duration_minutes }}"
+            },
+            {
+              "name": "status",
+              "value": "scheduled"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({...($('process-appointment-request').first().json.metadata), customer_name: $('process-appointment-request').first().json.customer_name, customer_email: $('process-appointment-request').first().json.customer_email, customer_phone: $('process-appointment-request').first().json.customer_phone, company: $('process-appointment-request').first().json.company, appointment_type: $('process-appointment-request').first().json.appointment_type, preferred_method: $('process-appointment-request').first().json.preferred_method}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "create-appointment",
+      "name": "Create Appointment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate Google Meet link (or other meeting service)\nconst appointmentData = $('process-appointment-request').first().json;\nconst appointmentRecord = $('create-appointment').first().json;\n\n// In a real implementation, you would integrate with Google Calendar API or similar\n// For now, we'll generate a placeholder meeting link\nconst meetingId = Math.random().toString(36).substring(2, 15);\nconst meetingLink = `https://meet.google.com/${meetingId}`;\n\nreturn {\n  appointment_id: appointmentRecord.id,\n  meeting_link: meetingLink,\n  meeting_id: meetingId,\n  meeting_password: Math.random().toString(36).substring(2, 8).toUpperCase(),\n  dial_in_number: '+1-555-123-4567',\n  customer_name: appointmentData.customer_name,\n  customer_email: appointmentData.customer_email,\n  scheduled_datetime: appointmentData.requested_datetime,\n  duration_minutes: appointmentData.duration_minutes,\n  appointment_type: appointmentData.appointment_type\n};"
+      },
+      "id": "generate-meeting-details",
+      "name": "Generate Meeting Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "PATCH",
+        "url": "=http://supabase-kong:8000/rest/v1/appointments?id=eq.{{ $('create-appointment').first().json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "meeting_link",
+              "value": "={{ $json.meeting_link }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({...JSON.parse($('create-appointment').first().json.metadata), meeting_id: $json.meeting_id, meeting_password: $json.meeting_password, dial_in_number: $json.dial_in_number}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "update-appointment-with-meeting",
+      "name": "Update Appointment with Meeting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1600, 200]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=You are a professional appointment scheduling assistant. Generate a confirmation email for a scheduled appointment.\n\nAppointment Details:\n- Customer: {{ $('generate-meeting-details').first().json.customer_name }}\n- Email: {{ $('generate-meeting-details').first().json.customer_email }}\n- Date & Time: {{ new Date($('generate-meeting-details').first().json.scheduled_datetime).toLocaleString() }}\n- Duration: {{ $('generate-meeting-details').first().json.duration_minutes }} minutes\n- Type: {{ $('generate-meeting-details').first().json.appointment_type }}\n- Meeting Link: {{ $('generate-meeting-details').first().json.meeting_link }}\n- Meeting ID: {{ $('generate-meeting-details').first().json.meeting_id }}\n- Password: {{ $('generate-meeting-details').first().json.meeting_password }}\n\nCreate a professional confirmation email that:\n1. Confirms the appointment is scheduled\n2. Includes all meeting details\n3. Provides clear instructions for joining\n4. Includes contact information for changes\n5. Expresses enthusiasm for the meeting\n6. Provides backup dial-in information\n\nGenerate the email subject and HTML body:",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        }
+      },
+      "id": "generate-confirmation-email",
+      "name": "Generate Confirmation Email",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [1800, 200],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.BUSINESS_EMAIL }}",
+        "toEmail": "={{ $('generate-meeting-details').first().json.customer_email }}",
+        "subject": "=✅ Appointment Confirmed - {{ new Date($('generate-meeting-details').first().json.scheduled_datetime).toLocaleDateString() }}",
+        "emailFormat": "html",
+        "html": "={{ $('generate-confirmation-email').first().json.response || $('generate-confirmation-email').first().json.text }}",
+        "options": {
+          "ccEmail": "={{ $env.CALENDAR_EMAIL }}",
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "send-confirmation-email",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [2000, 200],
+      "credentials": {
+        "smtp": {
+          "id": "business-email-smtp",
+          "name": "Business Email SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=Generate alternative time suggestions for an appointment booking that couldn't be scheduled.\n\nRequested Details:\n- Customer: {{ $('process-appointment-request').first().json.customer_name }}\n- Requested Time: {{ $('process-appointment-request').first().json.requested_datetime ? new Date($('process-appointment-request').first().json.requested_datetime).toLocaleString() : 'Invalid time provided' }}\n- Duration: {{ $('process-appointment-request').first().json.duration_minutes }} minutes\n- Type: {{ $('process-appointment-request').first().json.appointment_type }}\n\nReason for conflict: {{ $('process-appointment-request').first().json.is_valid_time ? 'Time slot already booked' : 'Time outside business hours (Mon-Fri, 9 AM - 6 PM)' }}\n\nCreate a professional email that:\n1. Apologizes for the scheduling conflict\n2. Explains why the requested time isn't available\n3. Suggests 3-4 alternative time slots in the next week\n4. Maintains a helpful and professional tone\n5. Provides easy ways to reschedule\n6. Includes contact information\n\nGenerate the email subject and HTML body:",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 400
+        }
+      },
+      "id": "generate-alternative-times-email",
+      "name": "Generate Alternative Times Email",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [800, 360],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service" 
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.BUSINESS_EMAIL }}",
+        "toEmail": "={{ $('process-appointment-request').first().json.customer_email }}",
+        "subject": "=Let's find a better time for your appointment",
+        "emailFormat": "html",
+        "html": "={{ $('generate-alternative-times-email').first().json.response || $('generate-alternative-times-email').first().json.text }}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "send-alternative-times-email",
+      "name": "Send Alternative Times Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1000, 360],
+      "credentials": {
+        "smtp": {
+          "id": "business-email-smtp",
+          "name": "Business Email SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": {{ $('validate-appointment-request').first() ? ($('check-if-available').first() ? 'true' : 'false') : 'false' }},\n  \"message\": \"{{ $('validate-appointment-request').first() ? ($('check-if-available').first() ? 'Appointment scheduled successfully!' : 'Requested time not available. Alternative times sent to your email.') : 'Invalid appointment request. Please check your details and try again.' }}\",\n  {{ $('validate-appointment-request').first() && $('check-if-available').first() ? '\"appointment_id\": \"' + $('create-appointment').first().json.id + '\",' : '' }}\n  {{ $('validate-appointment-request').first() && $('check-if-available').first() ? '\"meeting_link\": \"' + $('generate-meeting-details').first().json.meeting_link + '\",' : '' }}\n  {{ $('validate-appointment-request').first() && $('check-if-available').first() ? '\"scheduled_datetime\": \"' + $('generate-meeting-details').first().json.scheduled_datetime + '\",' : '' }}\n  \"timestamp\": {{ Date.now() }}\n}",
+        "options": {}
+      },
+      "id": "appointment-response",
+      "name": "Appointment Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2200, 300]
+    }
+  ],
+  "connections": {
+    "Appointment Request Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Appointment Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Appointment Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Appointment Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Appointment Request": {
+      "main": [
+        [
+          {
+            "node": "Check Availability",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Alternative Times Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Availability": {
+      "main": [
+        [
+          {
+            "node": "Check if Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Available": {
+      "main": [
+        [
+          {
+            "node": "Create Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Alternative Times Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Appointment": {
+      "main": [
+        [
+          {
+            "node": "Generate Meeting Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Meeting Details": {
+      "main": [
+        [
+          {
+            "node": "Update Appointment with Meeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Appointment with Meeting": {
+      "main": [
+        [
+          {
+            "node": "Generate Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Appointment Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Alternative Times Email": {
+      "main": [
+        [
+          {
+            "node": "Send Alternative Times Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alternative Times Email": {
+      "main": [
+        [
+          {
+            "node": "Appointment Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": ["appointment-scheduling", "calendar-automation", "meeting-management", "ai-automation"]
+}
