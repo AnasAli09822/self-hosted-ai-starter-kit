@@ -1,0 +1,365 @@
+{
+  "createdAt": "2024-12-19T12:00:00.000Z",
+  "updatedAt": "2024-12-19T12:00:00.000Z",
+  "id": "e0f0c4c07f004425",
+  "name": "Admin Workflow - Product Management & Bot Settings",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "telegram-admin-trigger",
+      "name": "Telegram Admin Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "webhookId": "admin-bot-webhook-id",
+      "credentials": {
+        "telegramApi": {
+          "id": "8ebd6f58e8664446",
+          "name": "Telegram Admin Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/set_persona",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-command-type",
+      "name": "Check Command Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract persona text after /set_persona command\nconst messageText = $input.first().json.message.text;\nconst personaText = messageText.replace('/set_persona', '').trim();\n\nif (!personaText) {\n  throw new Error('Please provide persona text after /set_persona command');\n}\n\nreturn {\n  persona: personaText,\n  chatId: $input.first().json.message.chat.id,\n  userId: $input.first().json.message.from.id\n};"
+      },
+      "id": "extract-persona",
+      "name": "Extract Persona",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 200]
+    },
+    {
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "bot_settings",
+        "upsert": true,
+        "query": "{\"_id\": \"bot_persona\"}",
+        "updateQuery": "{\"$set\": {\"_id\": \"bot_persona\", \"value\": \"={{ $json.persona }}\"}}",
+        "options": {}
+      },
+      "id": "update-bot-persona",
+      "name": "Update Bot Persona",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "credentials": {
+        "mongoDb": {
+          "id": "2490939ceec8479a",
+          "name": "MongoDB Atlas Connection"
+        }
+      },
+      "continueOnFail": false
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "✅ تم تحديث شخصية البوت بنجاح!\n\nالشخصية الجديدة: {{ $json.persona }}"
+      },
+      "id": "send-persona-confirmation",
+      "name": "Send Persona Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1100, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "8ebd6f58e8664446",
+          "name": "Telegram Admin Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "🔄 جاري فهرسة المنتج..."
+      },
+      "id": "send-processing-message",
+      "name": "Send Processing Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [700, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "8ebd6f58e8664446",
+          "name": "Telegram Admin Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process product data from image with caption\nconst message = $input.first().json.message;\n\n// Check if message has photo and caption\nif (!message.photo || !message.caption) {\n  throw new Error('يرجى إرسال صورة مع تعليق منظم يحتوي على: الاسم، الوصف، معلومات');\n}\n\n// Get the largest photo size\nconst photo = message.photo[message.photo.length - 1];\nconst caption = message.caption;\n\n// Parse structured caption\nconst lines = caption.split('\\n');\nlet productData = {\n  name: '',\n  description: '',\n  info: ''\n};\n\nlines.forEach(line => {\n  if (line.startsWith('الاسم:')) {\n    productData.name = line.replace('الاسم:', '').trim();\n  } else if (line.startsWith('الوصف:')) {\n    productData.description = line.replace('الوصف:', '').trim();\n  } else if (line.startsWith('معلومات:')) {\n    productData.info = line.replace('معلومات:', '').trim();\n  }\n});\n\nif (!productData.name || !productData.description) {\n  throw new Error('يرجى التأكد من وجود الاسم والوصف في التعليق');\n}\n\n// Combine all text for embedding\nconst combinedText = `اسم المنتج: ${productData.name}\\nالوصف: ${productData.description}\\nمعلومات إضافية: ${productData.info}`;\n\nreturn {\n  productName: productData.name,\n  productDescription: productData.description,\n  productInfo: productData.info,\n  combinedText: combinedText,\n  photoFileId: photo.file_id,\n  chatId: message.chat.id,\n  userId: message.from.id\n};"
+      },
+      "id": "process-product-data",
+      "name": "Process Product Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "fileId": "={{ $json.photoFileId }}"
+      },
+      "id": "get-photo-url",
+      "name": "Get Photo URL",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1100, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "8ebd6f58e8664446",
+          "name": "Telegram Admin Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data for vector embedding and storage\nconst productData = $input.first().json;\nconst photoData = $input.last().json;\n\nconst imageUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_ADMIN_BOT_TOKEN}/${photoData.file_path}`;\n\nreturn {\n  productName: productData.productName,\n  combinedText: productData.combinedText,\n  imageUrl: imageUrl,\n  chatId: productData.chatId,\n  pageContent: productData.combinedText,\n  metadata: {\n    product_name: productData.productName,\n    image_url: imageUrl\n  }\n};"
+      },
+      "id": "prepare-embedding-data",
+      "name": "Prepare Embedding Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 400]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "create-embeddings",
+      "name": "Create Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [1500, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "70ce000c498e4754",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "mongoDbCollection": {
+          "__rl": true,
+          "value": "knowledge_base",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "store-in-mongodb",
+      "name": "Store in MongoDB",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreMongoDb",
+      "typeVersion": 1,
+      "position": [1700, 400],
+      "credentials": {
+        "mongoDb": {
+          "id": "2490939ceec8479a",
+          "name": "MongoDB Atlas Connection"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "✅ تمت فهرسة المنتج بنجاح!\n\n🏷️ اسم المنتج: {{ $json.productName }}\n📸 تم حفظ الصورة والبيانات في قاعدة المعرفة"
+      },
+      "id": "send-success-message",
+      "name": "Send Success Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1900, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "8ebd6f58e8664446",
+          "name": "Telegram Admin Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "❌ أمر غير معروف.\n\nالأوامر المتاحة:\n🔹 /set_persona [الشخصية الجديدة] - لتحديث شخصية البوت\n🔹 إرسال صورة مع تعليق منظم لإضافة منتج جديد\n\nتنسيق إضافة المنتج:\nالاسم: [اسم المنتج]\nالوصف: [وصف المنتج]\nمعلومات: [معلومات إضافية]"
+      },
+      "id": "send-help-message",
+      "name": "Send Help Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [700, 600],
+      "credentials": {
+        "telegramApi": {
+          "id": "8ebd6f58e8664446",
+          "name": "Telegram Admin Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Admin Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Command Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Command Type": {
+      "main": [
+        [
+          {
+            "node": "Extract Persona",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Processing Message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Help Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Persona": {
+      "main": [
+        [
+          {
+            "node": "Update Bot Persona",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Bot Persona": {
+      "main": [
+        [
+          {
+            "node": "Send Persona Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Processing Message": {
+      "main": [
+        [
+          {
+            "node": "Process Product Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Product Data": {
+      "main": [
+        [
+          {
+            "node": "Get Photo URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Photo URL": {
+      "main": [
+        [
+          {
+            "node": "Prepare Embedding Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Embedding Data": {
+      "main": [
+        [
+          {
+            "node": "Create Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Store in MongoDB",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in MongoDB": {
+      "main": [
+        [
+          {
+            "node": "Send Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "tags": []
+}
