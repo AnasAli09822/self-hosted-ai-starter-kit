@@ -11,6 +11,30 @@ quickly get started with building self-hosted AI workflows.
 > [!TIP]
 > [Read the announcement](https://blog.n8n.io/self-hosted-ai/)
 
+## 🚀 New: Dual-Workflow AI Chatbot System
+
+This repository now includes a comprehensive **dual-workflow architecture** for building intelligent chatbot systems:
+
+### 🏗️ **Dual-Workflow Architecture**
+- **Admin Workflow**: For owners to manage product data and bot personality
+- **User Workflow**: For customers to interact with the bot 24/7
+
+### 📊 **Hybrid Data Strategy**
+- **MongoDB Atlas**: For intelligent vector search on knowledge base
+- **Google Sheets**: For conversation logging and monitoring
+
+### 🛠️ **Complete Tech Stack**
+- **n8n**: Self-hosted automation engine
+- **Telegram**: Admin and user bot interfaces
+- **OpenAI**: GPT-4o mini for responses, embeddings for search
+- **MongoDB Atlas**: Smart vector database
+- **Google Sheets**: Logging and analytics
+
+### 📖 **Documentation**
+For detailed setup instructions for the dual-workflow system, see [DUAL_WORKFLOW_SETUP.md](./DUAL_WORKFLOW_SETUP.md).
+
+---
+
 ### What’s included
 
 ✅ [**Self-hosted n8n**](https://n8n.io/) - Low-code platform with over 400

@@ -1,0 +1,538 @@
+{
+  "createdAt": "2024-12-19T12:00:00.000Z",
+  "updatedAt": "2024-12-19T12:00:00.000Z",
+  "id": "ef18f7b17ee94b28",
+  "name": "User Workflow - Smart Customer Assistant",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "telegram-user-trigger",
+      "name": "Telegram User Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "webhookId": "user-bot-webhook-id",
+      "credentials": {
+        "telegramApi": {
+          "id": "c944e795ec3f443b",
+          "name": "Telegram User Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.message.voice }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-message-type",
+      "name": "Check Message Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "fileId": "={{ $json.message.voice.file_id }}"
+      },
+      "id": "get-voice-file",
+      "name": "Get Voice File",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [700, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "c944e795ec3f443b",
+          "name": "Telegram User Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "transcribe",
+        "options": {
+          "language": "ar"
+        }
+      },
+      "id": "transcribe-voice",
+      "name": "Transcribe Voice",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "70ce000c498e4754",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract text from voice transcription or direct text message\nconst message = $input.first().json.message;\nlet userQuery = '';\nlet chatId = message.chat.id;\nlet userId = message.from.id;\nlet username = message.from.username || message.from.first_name || 'مستخدم';\n\nif ($input.all().length > 1) {\n  // Voice message - get transcription\n  userQuery = $input.last().json.text;\n} else {\n  // Text message\n  userQuery = message.text;\n}\n\nif (!userQuery) {\n  throw new Error('لم يتم العثور على نص في الرسالة');\n}\n\nreturn {\n  userQuery: userQuery,\n  chatId: chatId,\n  userId: userId,\n  username: username,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "extract-user-query",
+      "name": "Extract User Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 400]
+    },
+    {
+      "parameters": {
+        "operation": "findOne",
+        "collection": "bot_settings",
+        "query": "{\"_id\": \"bot_persona\"}"
+      },
+      "id": "get-bot-persona",
+      "name": "Get Bot Persona",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "credentials": {
+        "mongoDb": {
+          "id": "2490939ceec8479a",
+          "name": "MongoDB Atlas Connection"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Get Bot Persona').item.json.value || 'أنت مساعد ذكي ومفيد تتحدث العربية وتساعد العملاء في العثور على المنتجات المناسبة. كن ودودًا ومهنيًا في ردودك.' }}\n\nاستخدم أداة البحث للعثور على معلومات المنتجات عندما يسأل المستخدم عن منتج معين.",
+        "hasOutputParser": true
+      },
+      "id": "ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 1000
+        }
+      },
+      "id": "openai-chat-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [1100, 600],
+      "credentials": {
+        "openAiApi": {
+          "id": "70ce000c498e4754",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.userId }}",
+        "contextWindowLength": 10
+      },
+      "id": "window-buffer-memory",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "name": "product_search",
+        "description": "يستخدم للبحث عن معلومات المنتجات والخدمات في قاعدة المعرفة. استخدم هذه الأداة عندما يسأل المستخدم عن منتج معين."
+      },
+      "id": "mongodb-vector-search",
+      "name": "MongoDB Vector Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1.1,
+      "position": [1300, 600]
+    },
+    {
+      "parameters": {
+        "mongoDbCollection": {
+          "__rl": true,
+          "value": "knowledge_base",
+          "mode": "name"
+        },
+        "topK": 3
+      },
+      "id": "mongodb-vector-store",
+      "name": "MongoDB Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreMongoDb",
+      "typeVersion": 1,
+      "position": [1300, 800],
+      "credentials": {
+        "mongoDb": {
+          "id": "2490939ceec8479a",
+          "name": "MongoDB Atlas Connection"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small"
+      },
+      "id": "openai-embeddings",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [1500, 800],
+      "credentials": {
+        "openAiApi": {
+          "id": "70ce000c498e4754",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI agent response and check if it contains image URL\nconst agentResponse = $input.first().json.output;\nlet response = {};\n\ntry {\n  // Try to parse as JSON first\n  const parsed = JSON.parse(agentResponse);\n  if (parsed.reply_text && parsed.image_url) {\n    response = {\n      type: 'image_with_text',\n      text: parsed.reply_text,\n      imageUrl: parsed.image_url,\n      chatId: $('Extract User Query').item.json.chatId\n    };\n  } else {\n    response = {\n      type: 'text_only',\n      text: agentResponse,\n      chatId: $('Extract User Query').item.json.chatId\n    };\n  }\n} catch (error) {\n  // If parsing fails, treat as plain text\n  response = {\n    type: 'text_only',\n    text: agentResponse,\n    chatId: $('Extract User Query').item.json.chatId\n  };\n}\n\nreturn response;"
+      },
+      "id": "parse-response",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "image_with_text",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-response-type",
+      "name": "Check Response Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1500, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "photoUrl": "={{ $json.imageUrl }}",
+        "caption": "={{ $json.text }}"
+      },
+      "id": "send-image-response",
+      "name": "Send Image Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1700, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "c944e795ec3f443b",
+          "name": "Telegram User Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}"
+      },
+      "id": "send-text-response",
+      "name": "Send Text Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1700, 500],
+      "credentials": {
+        "telegramApi": {
+          "id": "c944e795ec3f443b",
+          "name": "Telegram User Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ process.env.GOOGLE_SHEETS_SPREADSHEET_ID }}",
+          "mode": "expression"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "المحادثات",
+          "mode": "name"
+        },
+        "columnToMatchOn": "A",
+        "valueToMatchOn": "",
+        "options": {
+          "useAppend": true
+        }
+      },
+      "id": "log-to-sheets",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1900, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "9759085b796e48fc",
+          "name": "Google Sheets API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data for Google Sheets logging\nconst userData = $('Extract User Query').item.json;\nconst responseData = $input.first().json;\n\nreturn {\n  \"التوقيت\": userData.timestamp,\n  \"معرف المستخدم\": userData.userId,\n  \"اسم المستخدم\": userData.username,\n  \"استفسار المستخدم\": userData.userQuery,\n  \"رد البوت\": responseData.text || 'صورة مع نص'\n};"
+      },
+      "id": "prepare-log-data",
+      "name": "Prepare Log Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 700]
+    }
+  ],
+  "connections": {
+    "Telegram User Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Message Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Message Type": {
+      "main": [
+        [
+          {
+            "node": "Get Voice File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract User Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Voice File": {
+      "main": [
+        [
+          {
+            "node": "Transcribe Voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe Voice": {
+      "main": [
+        [
+          {
+            "node": "Extract User Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract User Query": {
+      "main": [
+        [
+          {
+            "node": "Get Bot Persona",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Bot Persona": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MongoDB Vector Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MongoDB Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "MongoDB Vector Search Tool",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "MongoDB Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          {
+            "node": "Check Response Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Response Type": {
+      "main": [
+        [
+          {
+            "node": "Send Image Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Text Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Image Response": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Text Response": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Data": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "tags": []
+}
