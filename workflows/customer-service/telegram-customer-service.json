@@ -1,0 +1,381 @@
+{
+  "name": "Telegram Bot AI Customer Service",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-credentials",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Telegram message data\nconst telegramData = $input.first().json;\nconst message = telegramData.message;\nconst from = message.from;\nconst chat = message.chat;\n\nreturn {\n  message_id: message.message_id,\n  chat_id: chat.id,\n  user_id: from.id,\n  username: from.username || '',\n  first_name: from.first_name || '',\n  last_name: from.last_name || '',\n  customer_name: `${from.first_name || ''} ${from.last_name || ''}`.trim() || from.username || 'Unknown',\n  text: message.text || '',\n  date: message.date,\n  platform: 'telegram',\n  chat_type: chat.type,\n  telegram_data: telegramData\n};"
+      },
+      "id": "extract-telegram-data",
+      "name": "Extract Telegram Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "platform_integration_id",
+              "value": "={{ $json.platform_integration_id || 'default-telegram-integration' }}"
+            },
+            {
+              "name": "external_conversation_id",
+              "value": "={{ $json.chat_id }}"
+            },
+            {
+              "name": "customer_identifier",
+              "value": "={{ $json.user_id }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ $json.customer_name }}"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({platform: 'telegram', username: $json.username, chat_type: $json.chat_type, last_message_time: $json.date}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "upsert-telegram-conversation",
+      "name": "Upsert Telegram Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-telegram-conversation').first().json.id }}"
+            },
+            {
+              "name": "external_message_id",
+              "value": "={{ $('extract-telegram-data').first().json.message_id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "customer"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "={{ $('extract-telegram-data').first().json.user_id }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('extract-telegram-data').first().json.text }}"
+            },
+            {
+              "name": "message_type",
+              "value": "text"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify($('extract-telegram-data').first().json.telegram_data) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-telegram-message",
+      "name": "Save Telegram Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=You are a professional customer service AI assistant for {{ $('extract-telegram-data').first().json.customer_name }}.\n\nCustomer Message: {{ $('extract-telegram-data').first().json.text }}\n\nContext: This is a Telegram conversation. The customer's name is {{ $('extract-telegram-data').first().json.customer_name }} (Username: @{{ $('extract-telegram-data').first().json.username }}).\n\nInstructions:\n1. Respond professionally and helpfully\n2. Keep responses conversational for Telegram\n3. If you need to escalate to a human agent, say \"Let me connect you with one of our team members 👨‍💼\"\n4. Always be polite and solution-oriented\n5. Use emojis appropriately for Telegram communication\n6. Use the customer's name when appropriate\n\nProvide a helpful response:",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 300
+        }
+      },
+      "id": "generate-telegram-ai-response",
+      "name": "Generate Telegram AI Response",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [1000, 300],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('extract-telegram-data').first().json.chat_id }}",
+        "text": "={{ $('generate-telegram-ai-response').first().json.response || $('generate-telegram-ai-response').first().json.text || 'Thank you for your message! Let me connect you with one of our team members 👨‍💼' }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "send-telegram-response",
+      "name": "Send Telegram Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1200, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-credentials",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-telegram-conversation').first().json.id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "bot"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "telegram-ai-bot"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('generate-telegram-ai-response').first().json.response || $('generate-telegram-ai-response').first().json.text || 'Thank you for your message! Let me connect you with one of our team members 👨‍💼' }}"
+            },
+            {
+              "name": "message_type",
+              "value": "text"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({generated_by: 'ai', model: 'llama3.2', platform: 'telegram', response_time: Date.now()}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-telegram-bot-response",
+      "name": "Save Telegram Bot Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('extract-telegram-data').first().json.text.toLowerCase() }}",
+              "rightValue": "/start",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "check-start-command",
+      "name": "Check Start Command",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 500]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('extract-telegram-data').first().json.chat_id }}",
+        "text": "=🤖 Welcome to our AI Customer Service Bot!\n\nHi {{ $('extract-telegram-data').first().json.customer_name }}! 👋\n\nI'm here to help you 24/7. You can:\n• Ask questions about our services\n• Get support and assistance\n• Schedule appointments\n• Get information about products\n\nJust type your message and I'll respond right away! 💬",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "send-welcome-message",
+      "name": "Send Welcome Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [600, 460],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-credentials",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Telegram Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Start Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Telegram Data": {
+      "main": [
+        [
+          {
+            "node": "Upsert Telegram Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Telegram Conversation": {
+      "main": [
+        [
+          {
+            "node": "Save Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Generate Telegram AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Telegram AI Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Response": {
+      "main": [
+        [
+          {
+            "node": "Save Telegram Bot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Start Command": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": ["customer-service", "telegram", "ai-automation"]
+}

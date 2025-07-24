@@ -1,0 +1,462 @@
+{
+  "name": "Instagram DM AI Customer Service",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "instagram-webhook",
+      "name": "Instagram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "instagram-webhook-id"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.entry }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ $json.entry[0].messaging }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-instagram-message",
+      "name": "Check Instagram Message",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Instagram DM data\nconst webhookData = $input.first().json;\nconst entry = webhookData.entry[0];\nconst messaging = entry.messaging[0];\nconst sender = messaging.sender;\nconst message = messaging.message;\n\nif (message) {\n  return {\n    message_id: message.mid,\n    sender_id: sender.id,\n    recipient_id: messaging.recipient.id,\n    timestamp: messaging.timestamp,\n    text: message.text || '',\n    platform: 'instagram',\n    webhook_data: webhookData,\n    message_type: message.attachments ? 'attachment' : 'text'\n  };\n}\n\nreturn {};"
+      },
+      "id": "extract-instagram-data",
+      "name": "Extract Instagram Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 240]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v18.0/{{ $json.sender_id }}",
+        "authentication": "headerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "name,username,profile_pic"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-instagram-user-info",
+      "name": "Get Instagram User Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "instagram-api-token",
+          "name": "Instagram API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "platform_integration_id",
+              "value": "={{ $json.platform_integration_id || 'default-instagram-integration' }}"
+            },
+            {
+              "name": "external_conversation_id",
+              "value": "={{ $('extract-instagram-data').first().json.sender_id }}"
+            },
+            {
+              "name": "customer_identifier",
+              "value": "={{ $('extract-instagram-data').first().json.sender_id }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ $json.name || $json.username || 'Instagram User' }}"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({platform: 'instagram', username: $json.username, profile_pic: $json.profile_pic, last_message_time: $('extract-instagram-data').first().json.timestamp}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "upsert-instagram-conversation",
+      "name": "Upsert Instagram Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 240]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-instagram-conversation').first().json.id }}"
+            },
+            {
+              "name": "external_message_id",
+              "value": "={{ $('extract-instagram-data').first().json.message_id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "customer"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "={{ $('extract-instagram-data').first().json.sender_id }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('extract-instagram-data').first().json.text }}"
+            },
+            {
+              "name": "message_type",
+              "value": "={{ $('extract-instagram-data').first().json.message_type }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify($('extract-instagram-data').first().json.webhook_data) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-instagram-message",
+      "name": "Save Instagram Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1200, 240]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=You are a professional customer service AI assistant for Instagram DMs.\n\nCustomer: {{ $('get-instagram-user-info').first().json.name || $('get-instagram-user-info').first().json.username || 'Instagram User' }}\nMessage: {{ $('extract-instagram-data').first().json.text }}\n\nContext: This is an Instagram Direct Message conversation. The customer's Instagram username is @{{ $('get-instagram-user-info').first().json.username }}.\n\nInstructions:\n1. Respond professionally and helpfully\n2. Keep responses concise and engaging for Instagram\n3. Use appropriate emojis for Instagram communication\n4. If you need to escalate to a human agent, say \"Let me connect you with one of our team members 💬\"\n5. Always be polite and solution-oriented\n6. Reference their Instagram username when appropriate\n\nProvide a helpful response:",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 250
+        }
+      },
+      "id": "generate-instagram-ai-response",
+      "name": "Generate Instagram AI Response",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [1400, 240],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v18.0/{{ $env.INSTAGRAM_PAGE_ID }}/messages",
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "recipient",
+              "value": "={{ JSON.stringify({id: $('extract-instagram-data').first().json.sender_id}) }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ JSON.stringify({text: $('generate-instagram-ai-response').first().json.response || $('generate-instagram-ai-response').first().json.text || 'Thank you for your message! Let me connect you with one of our team members 💬'}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "send-instagram-response",
+      "name": "Send Instagram Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1600, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "instagram-api-token",
+          "name": "Instagram API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-instagram-conversation').first().json.id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "bot"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "instagram-ai-bot"
+            },
+            {
+              "name": "content",
+              "value": "={{ JSON.parse($('send-instagram-response').first().json.message).text }}"
+            },
+            {
+              "name": "message_type",
+              "value": "text"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({generated_by: 'ai', model: 'llama3.2', platform: 'instagram', response_time: Date.now()}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-instagram-bot-response",
+      "name": "Save Instagram Bot Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1800, 240]
+    },
+    {
+      "parameters": {
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "instagram-webhook-response",
+      "name": "Instagram Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 240]
+    },
+    {
+      "parameters": {
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "instagram-webhook-response-no-message",
+      "name": "Instagram Webhook Response (No Message)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [600, 400]
+    }
+  ],
+  "connections": {
+    "Instagram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Instagram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Instagram Message": {
+      "main": [
+        [
+          {
+            "node": "Extract Instagram Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Instagram Webhook Response (No Message)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Instagram Data": {
+      "main": [
+        [
+          {
+            "node": "Get Instagram User Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Instagram User Info": {
+      "main": [
+        [
+          {
+            "node": "Upsert Instagram Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Instagram Conversation": {
+      "main": [
+        [
+          {
+            "node": "Save Instagram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Instagram Message": {
+      "main": [
+        [
+          {
+            "node": "Generate Instagram AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Instagram AI Response": {
+      "main": [
+        [
+          {
+            "node": "Send Instagram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Instagram Response": {
+      "main": [
+        [
+          {
+            "node": "Save Instagram Bot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Instagram Bot Response": {
+      "main": [
+        [
+          {
+            "node": "Instagram Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": ["customer-service", "instagram", "ai-automation"]
+}

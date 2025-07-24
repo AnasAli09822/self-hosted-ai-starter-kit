@@ -1,0 +1,483 @@
+{
+  "name": "Facebook Messenger AI Customer Service",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "messenger-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "messenger-webhook",
+      "name": "Messenger Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "messenger-webhook-id"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.entry }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ $json.entry[0].messaging }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ $json.entry[0].messaging[0].message }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-messenger-message",
+      "name": "Check Messenger Message",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Facebook Messenger data\nconst webhookData = $input.first().json;\nconst entry = webhookData.entry[0];\nconst messaging = entry.messaging[0];\nconst sender = messaging.sender;\nconst message = messaging.message;\n\nif (message && !message.is_echo) {\n  return {\n    message_id: message.mid,\n    sender_id: sender.id,\n    recipient_id: messaging.recipient.id,\n    timestamp: messaging.timestamp,\n    text: message.text || '',\n    platform: 'messenger',\n    webhook_data: webhookData,\n    message_type: message.attachments ? 'attachment' : 'text',\n    has_quick_reply: !!message.quick_reply\n  };\n}\n\nreturn {};"
+      },
+      "id": "extract-messenger-data",
+      "name": "Extract Messenger Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 240]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v18.0/{{ $json.sender_id }}",
+        "authentication": "headerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "first_name,last_name,profile_pic"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-messenger-user-info",
+      "name": "Get Messenger User Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "facebook-page-token",
+          "name": "Facebook Page Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "platform_integration_id",
+              "value": "={{ $json.platform_integration_id || 'default-messenger-integration' }}"
+            },
+            {
+              "name": "external_conversation_id",
+              "value": "={{ $('extract-messenger-data').first().json.sender_id }}"
+            },
+            {
+              "name": "customer_identifier",
+              "value": "={{ $('extract-messenger-data').first().json.sender_id }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ `${$json.first_name || ''} ${$json.last_name || ''}`.trim() || 'Facebook User' }}"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({platform: 'messenger', first_name: $json.first_name, last_name: $json.last_name, profile_pic: $json.profile_pic, last_message_time: $('extract-messenger-data').first().json.timestamp}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "upsert-messenger-conversation",
+      "name": "Upsert Messenger Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 240]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-messenger-conversation').first().json.id }}"
+            },
+            {
+              "name": "external_message_id",
+              "value": "={{ $('extract-messenger-data').first().json.message_id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "customer"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "={{ $('extract-messenger-data').first().json.sender_id }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('extract-messenger-data').first().json.text }}"
+            },
+            {
+              "name": "message_type",
+              "value": "={{ $('extract-messenger-data').first().json.message_type }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify($('extract-messenger-data').first().json.webhook_data) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-messenger-message",
+      "name": "Save Messenger Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1200, 240]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=You are a professional customer service AI assistant for Facebook Messenger.\n\nCustomer: {{ $('get-messenger-user-info').first().json.first_name }} {{ $('get-messenger-user-info').first().json.last_name }}\nMessage: {{ $('extract-messenger-data').first().json.text }}\n\nContext: This is a Facebook Messenger conversation. The customer's name is {{ $('get-messenger-user-info').first().json.first_name }} {{ $('get-messenger-user-info').first().json.last_name }}.\n\nInstructions:\n1. Respond professionally and helpfully\n2. Keep responses conversational and friendly for Messenger\n3. Use appropriate emojis for Facebook Messenger communication\n4. If you need to escalate to a human agent, say \"Let me connect you with one of our team members 👨‍💼\"\n5. Always be polite and solution-oriented\n6. Use the customer's first name when appropriate\n7. Consider offering quick reply options when helpful\n\nProvide a helpful response:",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 300
+        }
+      },
+      "id": "generate-messenger-ai-response",
+      "name": "Generate Messenger AI Response",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [1400, 240],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v18.0/me/messages",
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $env.FACEBOOK_PAGE_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "recipient",
+              "value": "={{ JSON.stringify({id: $('extract-messenger-data').first().json.sender_id}) }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ JSON.stringify({text: $('generate-messenger-ai-response').first().json.response || $('generate-messenger-ai-response').first().json.text || 'Thank you for your message! Let me connect you with one of our team members 👨‍💼'}) }}"
+            },
+            {
+              "name": "messaging_type",
+              "value": "RESPONSE"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "send-messenger-response",
+      "name": "Send Messenger Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1600, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "facebook-page-token",
+          "name": "Facebook Page Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-messenger-conversation').first().json.id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "bot"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "messenger-ai-bot"
+            },
+            {
+              "name": "content",
+              "value": "={{ JSON.parse($('send-messenger-response').first().json.message).text }}"
+            },
+            {
+              "name": "message_type",
+              "value": "text"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({generated_by: 'ai', model: 'llama3.2', platform: 'messenger', response_time: Date.now()}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-messenger-bot-response",
+      "name": "Save Messenger Bot Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1800, 240]
+    },
+    {
+      "parameters": {
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "messenger-webhook-response",
+      "name": "Messenger Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 240]
+    },
+    {
+      "parameters": {
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "messenger-webhook-response-no-message",
+      "name": "Messenger Webhook Response (No Message)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [600, 400]
+    }
+  ],
+  "connections": {
+    "Messenger Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Messenger Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Messenger Message": {
+      "main": [
+        [
+          {
+            "node": "Extract Messenger Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Messenger Webhook Response (No Message)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Messenger Data": {
+      "main": [
+        [
+          {
+            "node": "Get Messenger User Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Messenger User Info": {
+      "main": [
+        [
+          {
+            "node": "Upsert Messenger Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Messenger Conversation": {
+      "main": [
+        [
+          {
+            "node": "Save Messenger Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Messenger Message": {
+      "main": [
+        [
+          {
+            "node": "Generate Messenger AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Messenger AI Response": {
+      "main": [
+        [
+          {
+            "node": "Send Messenger Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Messenger Response": {
+      "main": [
+        [
+          {
+            "node": "Save Messenger Bot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Messenger Bot Response": {
+      "main": [
+        [
+          {
+            "node": "Messenger Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": ["customer-service", "messenger", "facebook", "ai-automation"]
+}
