@@ -1,0 +1,420 @@
+{
+  "name": "Task Management - File Archiving",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "file-archive",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Webhook - File Upload",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "file-archive-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the Slack event data for file uploads\nconst slackData = $input.first().json;\nconst event = slackData.event || {};\n\nif (event.type !== 'message' || !event.files || event.files.length === 0) {\n  return {\n    json: {\n      error: true,\n      message: 'No files found in message'\n    }\n  };\n}\n\nconst userId = event.user;\nconst channelId = event.channel;\nconst files = event.files;\nconst messageText = event.text || '';\n\n// Check if this is a task-related file upload\n// Look for task ID in thread or message context\nlet taskId = null;\nconst taskIdMatch = messageText.match(/task[\\s#]*([0-9]+)/i);\nif (taskIdMatch) {\n  taskId = taskIdMatch[1];\n}\n\nif (!taskId) {\n  return {\n    json: {\n      error: true,\n      message: 'No task ID found in file upload context'\n    }\n  };\n}\n\nreturn {\n  json: {\n    error: false,\n    taskId: taskId,\n    userId: userId,\n    channelId: channelId,\n    files: files,\n    currentDateTime: new Date().toISOString()\n  }\n};"
+      },
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "name": "Parse File Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-g7h8-9012-cdef-345678901234",
+      "name": "Check Parse Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "get",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "options": {
+          "range": "A:O"
+        }
+      },
+      "id": "d4e5f6g7-h8i9-0123-def0-456789012345",
+      "name": "Get Task Details",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find the task and prepare folder creation\nconst taskId = $('Parse File Upload').first().json.taskId;\nconst files = $('Parse File Upload').first().json.files;\nconst sheetData = $input.all();\n\n// Find the task row\nlet taskRow = null;\nfor (const row of sheetData) {\n  if (row.json.TaskID && row.json.TaskID.toString() === taskId.toString()) {\n    taskRow = row.json;\n    break;\n  }\n}\n\nif (!taskRow) {\n  return {\n    json: {\n      error: true,\n      message: 'Task not found'\n    }\n  };\n}\n\n// Prepare folder name\nconst safeDescription = taskRow.Description.replace(/[^a-zA-Z0-9\\s]/g, '').substring(0, 50);\nconst folderName = `Task_${taskId}_${safeDescription}`;\n\nreturn {\n  json: {\n    error: false,\n    taskRow: taskRow,\n    folderName: folderName,\n    files: files,\n    taskId: taskId\n  }\n};"
+      },
+      "id": "e5f6g7h8-i9j0-1234-efg1-567890123456",
+      "name": "Prepare Folder Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "create",
+        "name": "={{ $json.folderName }}",
+        "options": {
+          "parents": ["YOUR_COMPANY_TASK_FILES_FOLDER_ID"]
+        }
+      },
+      "id": "f6g7h8i9-j0k1-2345-fgh2-678901234567",
+      "name": "Create Task Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-credential",
+          "name": "Google Drive Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare file downloads from Slack\nconst files = $('Prepare Folder Info').first().json.files;\nconst folderId = $input.first().json.id;\n\n// Process each file\nconst fileProcessingData = files.map(file => ({\n  fileId: file.id,\n  fileName: file.name,\n  fileUrl: file.url_private_download,\n  folderId: folderId\n}));\n\nreturn fileProcessingData.map(file => ({ json: file }));"
+      },
+      "id": "g7h8i9j0-k1l2-3456-ghi3-789012345678",
+      "name": "Prepare File Downloads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.fileUrl }}",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer YOUR_SLACK_BOT_TOKEN"
+          }
+        }
+      },
+      "id": "h8i9j0k1-l2m3-4567-hij4-890123456789",
+      "name": "Download File from Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1780,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $('Prepare File Downloads').first().json.fileName }}",
+        "parents": {
+          "__rl": true,
+          "value": "={{ $('Prepare File Downloads').first().json.folderId }}",
+          "mode": "id"
+        },
+        "binaryData": true,
+        "binaryPropertyName": "data"
+      },
+      "id": "i9j0k1l2-m3n4-5678-ijk5-901234567890",
+      "name": "Upload to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2000,
+        200
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-credential",
+          "name": "Google Drive Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare folder link for sheet update\nconst folderId = $('Create Task Folder').first().json.id;\nconst folderLink = `https://drive.google.com/drive/folders/${folderId}`;\nconst taskId = $('Prepare Folder Info').first().json.taskId;\n\nreturn {\n  json: {\n    taskId: taskId,\n    folderLink: folderLink\n  }\n};"
+      },
+      "id": "j0k1l2m3-n4o5-6789-jkl6-012345678901",
+      "name": "Prepare Sheet Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "DriveFolderLink": "={{ $json.folderLink }}"
+          }
+        },
+        "options": {
+          "lookupColumn": "TaskID",
+          "lookupValue": "={{ $json.taskId }}"
+        }
+      },
+      "id": "k1l2m3n4-o5p6-7890-klm7-123456789012",
+      "name": "Update Sheet with Folder Link",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2440,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "={{ $('Parse File Upload').first().json.channelId }}",
+        "text": "📁 **Files Archived Successfully!**\\n\\n**Task #{{ $('Prepare Sheet Update').first().json.taskId }}** files have been archived to Google Drive.\\n\\n🔗 **Folder Link**: {{ $('Prepare Sheet Update').first().json.folderLink }}\\n\\nAll files are now securely stored and linked to the task record.",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "id": "l2m3n4o5-p6q7-8901-lmn8-234567890123",
+      "name": "Confirm Archive",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        2660,
+        200
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-oauth-credential",
+          "name": "Slack OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"response_type\": \"ephemeral\", \"text\": \"❌ Error: \" + $json.message } }}"
+      },
+      "id": "m3n4o5p6-q7r8-9012-mno9-345678901234",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        400
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - File Upload": {
+      "main": [
+        [
+          {
+            "node": "Parse File Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse File Upload": {
+      "main": [
+        [
+          {
+            "node": "Check Parse Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Parse Success": {
+      "main": [
+        [
+          {
+            "node": "Get Task Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare Folder Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Folder Info": {
+      "main": [
+        [
+          {
+            "node": "Create Task Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Task Folder": {
+      "main": [
+        [
+          {
+            "node": "Prepare File Downloads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare File Downloads": {
+      "main": [
+        [
+          {
+            "node": "Download File from Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File from Slack": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Update": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet with Folder Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet with Folder Link": {
+      "main": [
+        [
+          {
+            "node": "Confirm Archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetUpStatus": {
+      "googleSheetsOAuth2Api": false,
+      "slackOAuth2Api": false,
+      "googleDriveOAuth2Api": false
+    }
+  },
+  "id": "file-archiving-workflow",
+  "tags": []
+}

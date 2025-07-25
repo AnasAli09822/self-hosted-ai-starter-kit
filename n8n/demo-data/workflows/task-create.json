@@ -1,0 +1,334 @@
+{
+  "name": "Task Management - Create Task",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "create-task",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Webhook - Create Task",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "create-task-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the Slack slash command data\nconst slackData = $input.first().json;\nconst userId = slackData.user_id;\nconst userName = slackData.user_name;\nconst commandText = slackData.text;\n\n// Parse the command text using regex pattern\n// Expected format: @user \"Task Description\" \"Due Date\"\nconst regex = /<@([^|]+)\\|[^>]+>\\s+\"([^\"]+)\"\\s+\"([^\"]+)\"/;\nconst match = commandText.match(regex);\n\nif (!match) {\n  return {\n    json: {\n      error: true,\n      message: \"Invalid format. Use: /create-task @user \\\"Task Description\\\" \\\"YYYY-MM-DD\\\"\"\n    }\n  };\n}\n\nconst assigneeId = match[1];\nconst description = match[2];\nconst dueDate = match[3];\n\n// Validate date format\nconst dateRegex = /^\\d{4}-\\d{2}-\\d{2}$/;\nif (!dateRegex.test(dueDate)) {\n  return {\n    json: {\n      error: true,\n      message: \"Invalid date format. Use YYYY-MM-DD format.\"\n    }\n  };\n}\n\nconst currentDateTime = new Date().toISOString();\n\nreturn {\n  json: {\n    error: false,\n    parsedData: {\n      description: description,\n      assigneeId: assigneeId,\n      assignedBy: userName,\n      assignedAt: currentDateTime,\n      dueAt: dueDate + \"T23:59:59.000Z\",\n      status: \"Assigned\"\n    },\n    slackResponse: {\n      user_id: userId,\n      channel_id: slackData.channel_id,\n      response_url: slackData.response_url\n    }\n  }\n};"
+      },
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-g7h8-9012-cdef-345678901234",
+      "name": "Check Parse Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Description": "={{ $json.parsedData.description }}",
+            "Assignee": "={{ $json.parsedData.assigneeId }}",
+            "AssignedBy": "={{ $json.parsedData.assignedBy }}",
+            "AssignedAt": "={{ $json.parsedData.assignedAt }}",
+            "DueAt": "={{ $json.parsedData.dueAt }}",
+            "Status": "={{ $json.parsedData.status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "d4e5f6g7-h8i9-0123-def0-456789012345",
+      "name": "Add Task to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the row number (TaskID) from Google Sheets response\nconst sheetsResponse = $input.first().json;\nconst taskId = sheetsResponse.updatedRows || sheetsResponse.tableRange?.split('!')[1]?.split(':')[0]?.replace(/\\D/g, '') || 'Unknown';\n\nconst parsedData = $('Parse Command').first().json.parsedData;\nconst slackData = $('Parse Command').first().json.slackResponse;\n\nreturn {\n  json: {\n    taskId: taskId,\n    assigneeId: parsedData.assigneeId,\n    description: parsedData.description,\n    dueAt: parsedData.dueAt,\n    assignedBy: parsedData.assignedBy,\n    slackData: slackData\n  }\n};"
+      },
+      "id": "e5f6g7h8-i9j0-1234-efg1-567890123456",
+      "name": "Prepare Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "={{ $json.assigneeId }}",
+        "text": "📋 **New Task Assigned to You!**\\n\\n**Task #{{ $json.taskId }}**: {{ $json.description }}\\n**Due Date**: {{ $json.dueAt.split('T')[0] }}\\n**Assigned by**: {{ $json.assignedBy }}\\n\\nPlease use the buttons below to update your task status:",
+        "otherOptions": {
+          "mrkdwn": true,
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "📋 **New Task Assigned to You!**\\n\\n**Task #{{ $json.taskId }}**: {{ $json.description }}\\n**Due Date**: {{ $json.dueAt.split('T')[0] }}\\n**Assigned by**: {{ $json.assignedBy }}\\n\\nPlease use the buttons below to update your task status:"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚀 Start Work"
+                  },
+                  "style": "primary",
+                  "action_id": "start_task_{{ $json.taskId }}"
+                },
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "✅ Complete Task"
+                  },
+                  "style": "primary",
+                  "action_id": "complete_task_{{ $json.taskId }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "f6g7h8i9-j0k1-2345-fgh2-678901234567",
+      "name": "Send Task Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-oauth-credential",
+          "name": "Slack OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "TaskID": "={{ $('Prepare Notification').first().json.taskId }}",
+            "SlackMessageID": "={{ $json.ts }}"
+          }
+        },
+        "options": {
+          "lookupColumn": "TaskID"
+        }
+      },
+      "id": "g7h8i9j0-k1l2-3456-ghi3-789012345678",
+      "name": "Update Sheet with Message ID",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1560,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"response_type\": \"ephemeral\", \"text\": \"✅ Task created successfully! Task #\" + $('Prepare Notification').first().json.taskId + \" has been assigned to the user.\" } }}"
+      },
+      "id": "h8i9j0k1-l2m3-4567-hij4-890123456789",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"response_type\": \"ephemeral\", \"text\": \"❌ Error: \" + $json.message } }}"
+      },
+      "id": "i9j0k1l2-m3n4-5678-ijk5-901234567890",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        400
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Create Task": {
+      "main": [
+        [
+          {
+            "node": "Parse Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Command": {
+      "main": [
+        [
+          {
+            "node": "Check Parse Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Parse Success": {
+      "main": [
+        [
+          {
+            "node": "Add Task to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Task to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Prepare Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Notification": {
+      "main": [
+        [
+          {
+            "node": "Send Task Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Task Notification": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet with Message ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet with Message ID": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetUpStatus": {
+      "googleSheetsOAuth2Api": false,
+      "slackOAuth2Api": false
+    }
+  },
+  "id": "create-task-workflow",
+  "tags": []
+}

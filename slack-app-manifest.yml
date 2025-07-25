@@ -1,0 +1,45 @@
+_metadata:
+  major_version: 1
+  minor_version: 1
+display_information:
+  name: N8N Task Bot
+  description: Task management bot powered by n8n
+  background_color: "#7c3aed"
+features:
+  bot_user:
+    display_name: N8N Task Bot
+    always_online: false
+  slash_commands:
+    - command: /create-task
+      url: https://your-n8n-instance.com/webhook/create-task
+      description: Create a new task
+      usage_hint: "@user \"Task Description\" \"2024-12-31\""
+      should_escape: false
+  interactivity:
+    is_enabled: true
+    request_url: https://your-n8n-instance.com/webhook/task-interaction
+oauth_config:
+  scopes:
+    bot:
+      - channels:read
+      - chat:write
+      - chat:write.public
+      - commands
+      - files:read
+      - files:write
+      - im:write
+      - users:read
+      - users:read.email
+settings:
+  event_subscriptions:
+    request_url: https://your-n8n-instance.com/webhook/slack-events
+    bot_events:
+      - message.channels
+      - message.im
+      - file_shared
+  interactivity:
+    is_enabled: true
+    request_url: https://your-n8n-instance.com/webhook/task-interaction
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

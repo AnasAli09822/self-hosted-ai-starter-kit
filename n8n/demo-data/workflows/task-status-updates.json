@@ -1,0 +1,404 @@
+{
+  "name": "Task Management - Status Updates",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "task-interaction",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Webhook - Task Interaction",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "task-interaction-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the Slack interactive payload\nconst slackData = $input.first().json;\nconst payload = JSON.parse(slackData.payload || '{}');\n\nconst actionValue = payload.actions?.[0]?.action_id || '';\nconst userId = payload.user?.id || '';\nconst messageTs = payload.message?.ts || '';\nconst channelId = payload.channel?.id || '';\n\n// Extract action type and task ID\nlet actionType = '';\nlet taskId = '';\n\nif (actionValue.startsWith('start_task_')) {\n  actionType = 'start';\n  taskId = actionValue.replace('start_task_', '');\n} else if (actionValue.startsWith('complete_task_')) {\n  actionType = 'complete';\n  taskId = actionValue.replace('complete_task_', '');\n}\n\nif (!actionType || !taskId) {\n  return {\n    json: {\n      error: true,\n      message: 'Invalid action or task ID'\n    }\n  };\n}\n\nconst currentDateTime = new Date().toISOString();\n\nreturn {\n  json: {\n    error: false,\n    actionType: actionType,\n    taskId: taskId,\n    userId: userId,\n    messageTs: messageTs,\n    channelId: channelId,\n    currentDateTime: currentDateTime\n  }\n};"
+      },
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "name": "Parse Interaction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-g7h8-9012-cdef-345678901234",
+      "name": "Check Parse Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.actionType }}",
+              "rightValue": "start",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d4e5f6g7-h8i9-0123-def0-456789012345",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "In Progress",
+            "StartedAt": "={{ $json.currentDateTime }}"
+          }
+        },
+        "options": {
+          "lookupColumn": "TaskID",
+          "lookupValue": "={{ $json.taskId }}"
+        }
+      },
+      "id": "e5f6g7h8-i9j0-1234-efg1-567890123456",
+      "name": "Update Start Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1120,
+        100
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Completed",
+            "CompletedAt": "={{ $json.currentDateTime }}"
+          }
+        },
+        "options": {
+          "lookupColumn": "TaskID",
+          "lookupValue": "={{ $json.taskId }}"
+        }
+      },
+      "id": "f6g7h8i9-j0k1-2345-fgh2-678901234567",
+      "name": "Update Complete Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1120,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "get",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "options": {
+          "range": "A:O"
+        }
+      },
+      "id": "g7h8i9j0-k1l2-3456-ghi3-789012345678",
+      "name": "Get Task Details",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find the task row and prepare message update\nconst taskId = $('Parse Interaction').first().json.taskId;\nconst actionType = $('Parse Interaction').first().json.actionType;\nconst sheetData = $input.all();\n\n// Find the task row\nlet taskRow = null;\nfor (const row of sheetData) {\n  if (row.json.TaskID && row.json.TaskID.toString() === taskId.toString()) {\n    taskRow = row.json;\n    break;\n  }\n}\n\nif (!taskRow) {\n  return {\n    json: {\n      error: true,\n      message: 'Task not found'\n    }\n  };\n}\n\nlet messageText = '';\nlet messageBlocks = [];\n\nif (actionType === 'start') {\n  messageText = `⏳ **Task In Progress**\\n\\n**Task #${taskId}**: ${taskRow.Description}\\n**Status**: In Progress\\n**Started**: ${new Date().toLocaleString()}`;\n  messageBlocks = [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": messageText\n      }\n    }\n  ];\n} else if (actionType === 'complete') {\n  messageText = `🎉 **Task Completed!**\\n\\n**Task #${taskId}**: ${taskRow.Description}\\n**Status**: Completed\\n**Completed**: ${new Date().toLocaleString()}`;\n  messageBlocks = [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": messageText\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"📁 Please upload your final deliverable files to this thread if needed.\"\n      }\n    }\n  ];\n}\n\nreturn {\n  json: {\n    error: false,\n    taskRow: taskRow,\n    messageText: messageText,\n    messageBlocks: messageBlocks,\n    actionType: actionType\n  }\n};"
+      },
+      "id": "h8i9j0k1-l2m3-4567-hij4-890123456789",
+      "name": "Prepare Message Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "update",
+        "select": "channel",
+        "channelId": "={{ $('Parse Interaction').first().json.channelId }}",
+        "ts": "={{ $('Parse Interaction').first().json.messageTs }}",
+        "text": "={{ $json.messageText }}",
+        "otherOptions": {
+          "mrkdwn": true,
+          "blocks": "={{ $json.messageBlocks }}"
+        }
+      },
+      "id": "i9j0k1l2-m3n4-5678-ijk5-901234567890",
+      "name": "Update Slack Message",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1780,
+        200
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-oauth-credential",
+          "name": "Slack OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "={{ $json.taskRow.AssignedBy }}",
+        "text": "📈 **Task Status Update**\\n\\n**Task #{{ $('Parse Interaction').first().json.taskId }}**: {{ $json.taskRow.Description }}\\n**Assignee**: <@{{ $json.taskRow.Assignee }}>\\n**New Status**: {{ $json.actionType === 'start' ? 'In Progress' : 'Completed' }}\\n**Updated**: {{ $('Parse Interaction').first().json.currentDateTime.split('T')[0] }}",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "id": "j0k1l2m3-n4o5-6789-jkl6-012345678901",
+      "name": "Notify Supervisor",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        2000,
+        200
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-oauth-credential",
+          "name": "Slack OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"response_type\": \"ephemeral\", \"text\": \"❌ Error: \" + $json.message } }}"
+      },
+      "id": "k1l2m3n4-o5p6-7890-klm7-123456789012",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        400
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Task Interaction": {
+      "main": [
+        [
+          {
+            "node": "Parse Interaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Interaction": {
+      "main": [
+        [
+          {
+            "node": "Check Parse Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Parse Success": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "Update Start Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Complete Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Start Status": {
+      "main": [
+        [
+          {
+            "node": "Get Task Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Complete Status": {
+      "main": [
+        [
+          {
+            "node": "Get Task Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare Message Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Message Update": {
+      "main": [
+        [
+          {
+            "node": "Update Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Slack Message": {
+      "main": [
+        [
+          {
+            "node": "Notify Supervisor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetUpStatus": {
+      "googleSheetsOAuth2Api": false,
+      "slackOAuth2Api": false
+    }
+  },
+  "id": "task-status-updates-workflow",
+  "tags": []
+}
