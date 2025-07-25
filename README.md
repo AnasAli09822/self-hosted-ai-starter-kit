@@ -35,6 +35,31 @@ Engineering world, handles large amounts of data safely.
 
 ⭐️ **Private Financial Document Analysis** at minimal cost
 
+⭐️ **Complete Task Management System** with Slack, Google Sheets, and Google Drive integration
+
+## 📋 Task Management System
+
+This repository now includes a comprehensive task management system that integrates:
+- **Slack** for user interactions
+- **n8n** for workflow automation
+- **Google Sheets** as data storage
+- **Google Drive** for file archiving
+
+### Features:
+- Create tasks via Slack slash commands (`/create-task`)
+- Interactive status updates with buttons
+- Automated file archiving to Google Drive
+- Weekly performance reports
+- Real-time notifications and progress tracking
+
+### Quick Start:
+1. Follow the setup instructions in `TASK_MANAGEMENT_SETUP.md`
+2. Configure Google APIs and Slack app
+3. Import the included n8n workflows
+4. Start managing tasks directly from Slack!
+
+For Arabic speakers, see `نظام_إدارة_المهام.md` for setup guide in Arabic.
+
 ## Installation
 
 ### Cloning the Repository

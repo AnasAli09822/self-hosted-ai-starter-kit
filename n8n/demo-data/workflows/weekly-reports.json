@@ -1,0 +1,225 @@
+{
+  "name": "Task Management - Weekly Reports",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 20 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Weekly Report Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "get",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": "Tasks",
+        "options": {
+          "range": "A:O"
+        }
+      },
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "name": "Get All Tasks",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze tasks data for weekly report\nconst tasksData = $input.all();\nconst now = new Date();\nconst oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\n\n// Initialize report data\nconst report = {\n  totalTasks: 0,\n  completedTasks: 0,\n  inProgressTasks: 0,\n  assignedTasks: 0,\n  overdueTasks: 0,\n  employeeStats: {},\n  completedThisWeek: [],\n  overdueList: []\n};\n\n// Process each task\nfor (const taskRow of tasksData) {\n  const task = taskRow.json;\n  \n  if (!task.TaskID || task.TaskID === 'TaskID') continue; // Skip header row\n  \n  report.totalTasks++;\n  \n  // Count by status\n  switch (task.Status) {\n    case 'Completed':\n      report.completedTasks++;\n      \n      // Check if completed this week\n      if (task.CompletedAt) {\n        const completedDate = new Date(task.CompletedAt);\n        if (completedDate >= oneWeekAgo) {\n          report.completedThisWeek.push({\n            taskId: task.TaskID,\n            description: task.Description,\n            assignee: task.Assignee,\n            completedAt: task.CompletedAt\n          });\n        }\n      }\n      break;\n    case 'In Progress':\n      report.inProgressTasks++;\n      break;\n    case 'Assigned':\n      report.assignedTasks++;\n      break;\n  }\n  \n  // Check for overdue tasks\n  if (task.Status !== 'Completed' && task.DueAt) {\n    const dueDate = new Date(task.DueAt);\n    if (dueDate < now) {\n      report.overdueTasks++;\n      report.overdueList.push({\n        taskId: task.TaskID,\n        description: task.Description,\n        assignee: task.Assignee,\n        dueAt: task.DueAt,\n        daysPastDue: Math.floor((now - dueDate) / (24 * 60 * 60 * 1000))\n      });\n    }\n  }\n  \n  // Employee statistics\n  const assignee = task.Assignee || 'Unassigned';\n  if (!report.employeeStats[assignee]) {\n    report.employeeStats[assignee] = {\n      totalAssigned: 0,\n      completed: 0,\n      inProgress: 0,\n      overdue: 0\n    };\n  }\n  \n  report.employeeStats[assignee].totalAssigned++;\n  \n  if (task.Status === 'Completed') {\n    report.employeeStats[assignee].completed++;\n  } else if (task.Status === 'In Progress') {\n    report.employeeStats[assignee].inProgress++;\n  }\n  \n  if (task.Status !== 'Completed' && task.DueAt && new Date(task.DueAt) < now) {\n    report.employeeStats[assignee].overdue++;\n  }\n}\n\n// Calculate completion rate\nreport.completionRate = report.totalTasks > 0 ? Math.round((report.completedTasks / report.totalTasks) * 100) : 0;\n\n// Generate report date\nreport.reportDate = now.toLocaleDateString('en-US', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric'\n});\n\nreport.weekRange = `${oneWeekAgo.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;\n\nreturn {\n  json: report\n};"
+      },
+      "id": "c3d4e5f6-g7h8-9012-cdef-345678901234",
+      "name": "Analyze Tasks Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate formatted report\nconst report = $input.first().json;\n\n// Build employee stats section\nlet employeeStatsText = '';\nfor (const [employee, stats] of Object.entries(report.employeeStats)) {\n  const completionRate = stats.totalAssigned > 0 ? Math.round((stats.completed / stats.totalAssigned) * 100) : 0;\n  employeeStatsText += `• **<@${employee}>**: ${stats.completed}/${stats.totalAssigned} completed (${completionRate}%) | ${stats.inProgress} in progress | ${stats.overdue} overdue\\n`;\n}\n\n// Build completed this week section\nlet completedThisWeekText = '';\nif (report.completedThisWeek.length > 0) {\n  for (const task of report.completedThisWeek) {\n    completedThisWeekText += `• **Task #${task.taskId}**: ${task.description} (<@${task.assignee}>)\\n`;\n  }\n} else {\n  completedThisWeekText = '• No tasks completed this week\\n';\n}\n\n// Build overdue section\nlet overdueText = '';\nif (report.overdueList.length > 0) {\n  for (const task of report.overdueList.slice(0, 10)) { // Limit to top 10\n    overdueText += `• **Task #${task.taskId}**: ${task.description} (<@${task.assignee}>) - ${task.daysPastDue} days overdue\\n`;\n  }\n  if (report.overdueList.length > 10) {\n    overdueText += `• ...and ${report.overdueList.length - 10} more overdue tasks\\n`;\n  }\n} else {\n  overdueText = '• No overdue tasks! 🎉\\n';\n}\n\n// Generate the complete report\nconst reportText = `📊 **Weekly Task Management Report**\n**Report Date**: ${report.reportDate}\n**Period**: ${report.weekRange}\n\n---\n\n## 📈 **Overall Statistics**\n• **Total Tasks**: ${report.totalTasks}\n• **Completed**: ${report.completedTasks} (${report.completionRate}%)\n• **In Progress**: ${report.inProgressTasks}\n• **Assigned**: ${report.assignedTasks}\n• **Overdue**: ${report.overdueTasks}\n\n---\n\n## 👥 **Employee Performance**\n${employeeStatsText}\n---\n\n## ✅ **Completed This Week (${report.completedThisWeek.length})**\n${completedThisWeekText}\n---\n\n## ⚠️ **Overdue Tasks (${report.overdueList.length})**\n${overdueText}\n---\n\n*Generated automatically by N8N Task Management System*\n*Next report: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}*`;\n\nreturn {\n  json: {\n    reportText: reportText,\n    reportData: report\n  }\n};"
+      },
+      "id": "d4e5f6g7-h8i9-0123-def0-456789012345",
+      "name": "Format Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#management-reports",
+        "text": "={{ $json.reportText }}",
+        "otherOptions": {
+          "mrkdwn": true,
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "={{ $json.reportText }}"
+              }
+            }
+          ]
+        }
+      },
+      "id": "e5f6g7h8-i9j0-1234-efg1-567890123456",
+      "name": "Send Report to Management Channel",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        200
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-oauth-credential",
+          "name": "Slack OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get list of managers from the report data\nconst report = $input.first().json.reportData;\nconst managers = new Set();\n\n// Extract unique AssignedBy values (managers) from the original tasks data\n// This would need to be populated from the sheet data\n// For now, we'll use a predefined list or extract from task assignments\n\n// You can customize this list based on your organization\nconst managersList = [\n  'MANAGER_USER_ID_1',  // Replace with actual Slack user IDs\n  'MANAGER_USER_ID_2',\n  'AnasAli09822'        // The user mentioned in the problem statement\n];\n\nreturn managersList.map(managerId => ({\n  json: {\n    managerId: managerId,\n    reportText: $input.first().json.reportText\n  }\n}));"
+      },
+      "id": "f6g7h8i9-j0k1-2345-fgh2-678901234567",
+      "name": "Prepare Manager DMs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "={{ $json.managerId }}",
+        "text": "📊 **Your Weekly Task Management Report**\\n\\nHere's your personalized weekly report:\\n\\n{{ $json.reportText }}\\n\\n---\\n\\n💡 **Quick Actions:**\\n• Review overdue tasks with team members\\n• Follow up on in-progress tasks\\n• Plan next week's priorities\\n\\nNeed detailed task data? Check the full Google Sheet: YOUR_GOOGLE_SHEET_LINK",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "id": "g7h8i9j0-k1l2-3456-ghi3-789012345678",
+      "name": "Send DM to Managers",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1340,
+        400
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-oauth-credential",
+          "name": "Slack OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Weekly Report Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get All Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Tasks": {
+      "main": [
+        [
+          {
+            "node": "Analyze Tasks Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Tasks Data": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Report": {
+      "main": [
+        [
+          {
+            "node": "Send Report to Management Channel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Manager DMs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Manager DMs": {
+      "main": [
+        [
+          {
+            "node": "Send DM to Managers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetUpStatus": {
+      "googleSheetsOAuth2Api": false,
+      "slackOAuth2Api": false
+    }
+  },
+  "id": "weekly-reports-workflow",
+  "tags": []
+}
