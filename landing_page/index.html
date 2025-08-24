@@ -1,0 +1,154 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>تدفّق.ai | الذكاء الاصطناعي الذي يبيع بدلاً عنك</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 1. Hero Section -->
+    <header class="hero">
+        <!-- Video Background (lazy loaded) -->
+        <video class="hero-video" autoplay muted loop playsinline poster="https://cdn.coverr.co/videos/coverr-bubbles-3D-9157/poster.jpg">
+            <source data-src="https://cdn.coverr.co/videos/coverr-bubbles-3D-9157/1080p.mp4" type="video/mp4">
+        </video>
+        <div class="overlay"></div>
+        <div class="container hero-content">
+            <h1>تدفّق.ai: الذكاء الاصطناعي الذي يبيع بدلاً عنك</h1>
+            <h2>ردود فورية، إجابات ذكية، وتحويل العملاء إلى مشترين — على واتساب وإنستغرام وماسينجر وموقعك</h2>
+            <a href="#start" class="btn-primary cta-btn">
+                <span>جرب مجاناً الآن</span>
+                <svg class="cta-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 5L19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </a>
+        </div>
+    </header>
+
+    <!-- 2. Customer Journey -->
+    <section class="journey attention">
+        <div class="container">
+            <div class="channels">
+                <img class="channel-icon" src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/whatsapp.svg" alt="WhatsApp"/>
+                <img class="channel-icon" src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/instagram.svg" alt="Instagram"/>
+                <img class="channel-icon" src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/facebookmessenger.svg" alt="Messenger"/>
+                <img class="channel-icon" src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/webcomponentsdotorg.svg" alt="Website"/>
+            </div>
+            <p class="journey-text">أينما كان عميلك… نحن هناك.</p>
+        </div>
+    </section>
+
+    <section class="journey problem parallax-bg">
+        <div class="container">
+            <p class="problem-text">تأخر الرد؟ فرّك المعلومة؟ عميلك ينتقل للمنافس.</p>
+        </div>
+    </section>
+
+    <section class="journey solution">
+        <div class="container cards-3d-wrapper">
+            <div class="card-3d" data-tilt>
+                <h3>رد فوري 24/7</h3>
+            </div>
+            <div class="card-3d popular" data-tilt>
+                <h3>قاعدة معرفة ذكية</h3>
+            </div>
+            <div class="card-3d" data-tilt>
+                <h3>تحويل سلس للمبيعات</h3>
+            </div>
+        </div>
+        <ul class="benefits-list container">
+            <li><span class="emoji">🚀</span> زيادة المبيعات بنسبة تصل إلى 30%</li>
+            <li><span class="emoji">💰</span> تخفيض تكاليف خدمة العملاء حتى 50%</li>
+            <li><span class="emoji">⏱️</span> استجابة خلال 5 ثوانٍ فقط</li>
+            <li><span class="emoji">📈</span> تحليلات فورية وتقارير دورية</li>
+        </ul>
+    </section>
+
+    <!-- 3. Templates Showcase -->
+    <section class="templates container">
+        <h2 class="section-title">قوالب جاهزة للانطلاق</h2>
+        <div class="templates-grid">
+            <div class="template-card" data-tilt>
+                <h3>التسوق السريع</h3>
+                <p>تجاوب مع الاستفسارات عن المنتجات وأسعارها.</p>
+            </div>
+            <div class="template-card" data-tilt>
+                <h3>حجز المواعيد</h3>
+                <p>يقدّم للعميل خيارات المواعيد المتاحة تلقائياً.</p>
+            </div>
+            <div class="template-card" data-tilt>
+                <h3>الدعم الفني</h3>
+                <p>يوجه العميل لحلول سريعة أو يحول للمندوب.</p>
+            </div>
+            <div class="template-card" data-tilt>
+                <h3>التسويق العكسي</h3>
+                <p>يقترح منتجات مكملة ويعرض عروضاً خاصة.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. Custom Solutions -->
+    <section class="custom-solutions">
+        <div class="container">
+            <h2>الحلول المخصصة</h2>
+            <p class="subtitle">نحن لا نؤمن بالحلول الجاهزة فقط — نُصمّم لكل شركة خدمتها الذكية وفقاً لاحتياجاتها:</p>
+            <div id="solutions-svg-wrapper"></div><!-- Filled by Three.js -->
+            <ul class="solutions-list">
+                <li><strong>للشركات الكبيرة:</strong> دمج مع أنظمة ERP وCRM بسلاسة.</li>
+                <li><strong>للمتاجر الإلكترونية:</strong> توصيات منتجات مخصصة وربط مع منصّات الدفع.</li>
+                <li><strong>للمؤسسات الخدمية:</strong> حجز المواعيد، تذاكر الدعم، وجدولة التنبيهات.</li>
+                <li><strong>للشركات الناشئة:</strong> إعداد سريع، واجهة سهلة، ودعم مباشر خلال الإطلاق.</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- 5. Testimonials -->
+    <section class="testimonials">
+        <div class="container">
+            <h2>ماذا يقول عملاؤنا؟</h2>
+            <div class="carousel" id="testimonial-carousel">
+                <!-- Slides inserted via JS -->
+                <div class="carousel-item active">
+                    <blockquote>“منذ ربطنا تدفّق.ai، ارتفع معدل التحويل في متاجرنا 35%!”<cite>— شركة نبض للتجارة الإلكترونية، الرياض</cite></blockquote>
+                </div>
+                <div class="carousel-item">
+                    <blockquote>“الرد الفوري أنقذ مبيعات لا تحصى، والدعم أقل تكلفة الآن!”<cite>— متجر الراية، جدة</cite></blockquote>
+                </div>
+                <div class="carousel-item">
+                    <blockquote>“عملاؤنا يحجزون مواعيدهم بأنفسهم في أقل من دقيقة.”<cite>— عيادة السالم، صنعاء</cite></blockquote>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 6. Final CTA -->
+    <section class="final-cta" id="start">
+        <canvas id="particles-canvas"></canvas>
+        <div class="container cta-content">
+            <h2>جاهز لتدفق المبيعات؟</h2>
+            <p>ابدأ اليوم مجاناً وراقب كيف يتغير تواصلك مع عملائك إلى تجربة مدهشة.</p>
+            <a href="#" class="btn-primary cta-big">ابدأ مجاناً</a>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <p>© 2025 تدفّق.ai. جميع الحقوق محفوظة</p>
+        </div>
+    </footer>
+
+    <!-- External libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js" integrity="sha512-HBz4C7Fzc7O3tXymd6u+Sl8ZpKdpf1HQdaiuBNvLU/nMxvoyvH255+YiQoX8duEBsIdPfWl8vCX+OfKnZH+hqA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" integrity="sha512-YmxiScly79kPX1DScdFoXQebcCOMbKoQQRaOni+5hd39L1EpwY/yd8tQAtS5M8MStg7YvPXFweKvVJtHcaeJxA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js" integrity="sha512-pbja0eoW6DYNxC19dvH5/vd0Yjn4EjNXPGKMmuXYwekrT2l/hjkHLLPxluXzcrxgoeKiI2P0dCHDGg2GaR6iHw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <!-- Local Script -->
+    <script src="script.js"></script>
+</body>
+</html>
