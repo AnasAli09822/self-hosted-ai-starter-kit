@@ -1,0 +1,242 @@
+{
+  "createdAt": "2024-12-19T10:30:00.000Z",
+  "updatedAt": "2024-12-19T10:30:00.000Z",
+  "id": "VectorSearchWorkflow002",
+  "name": "Intelligent Document Search Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "search",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-search-001",
+      "name": "Search Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        300,
+        400
+      ],
+      "webhookId": "search-webhook-001"
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:latest",
+        "options": {}
+      },
+      "id": "query-embeddings-001",
+      "name": "Query Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        520,
+        400
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "qdrantCollection": "documents",
+        "topK": 5
+      },
+      "id": "vector-search-001",
+      "name": "Vector Search",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1,
+      "position": [
+        740,
+        400
+      ],
+      "credentials": {
+        "qdrantApi": {
+          "id": "sFfERYppMeBnFNeA",
+          "name": "Local QdrantApi database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "id": "answer-generator-001",
+      "name": "Answer Generator",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        960,
+        620
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "xHuYe0MDGOs9IpBW",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Based on the following context from documents, please answer the user's question. If the answer cannot be found in the context, please say so.\n\nContext:\n{{ $json.pageContent }}\n\nUser Question: {{ $('Search Webhook').first().json.body.question }}\n\nAnswer:"
+      },
+      "id": "rag-chain-001",
+      "name": "RAG Chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"answer\": \"{{ $json.text }}\",\n  \"sources\": {{ $json.sources }},\n  \"question\": \"{{ $('Search Webhook').first().json.body.question }}\"\n}"
+      },
+      "id": "response-001",
+      "name": "Search Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1180,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.question }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "validate-query-001",
+      "name": "Validate Query",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        520,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"Please provide a question in the request body\",\n  \"example\": {\n    \"question\": \"What is the main topic of the document?\"\n  }\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "error-response-001",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        740,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Search Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Query": {
+      "main": [
+        [
+          {
+            "node": "Query Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Vector Search",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Search": {
+      "ai_document": [
+        [
+          {
+            "node": "RAG Chain",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Generator": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RAG Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG Chain": {
+      "main": [
+        [
+          {
+            "node": "Search Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "vector-search-v1",
+  "triggerCount": 0,
+  "tags": [
+    "search",
+    "rag",
+    "vector-database",
+    "api"
+  ]
+}
