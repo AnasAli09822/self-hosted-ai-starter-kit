@@ -1,0 +1,424 @@
+{
+  "name": "WhatsApp Business AI Customer Service",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "whatsapp-webhook",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "whatsapp-webhook-id"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.entry[0].changes[0].value.messages }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-message",
+      "name": "Check if Message",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract WhatsApp message data\nconst webhookData = $input.first().json;\nconst entry = webhookData.entry[0];\nconst changes = entry.changes[0];\nconst value = changes.value;\n\nif (value.messages && value.messages.length > 0) {\n  const message = value.messages[0];\n  const contact = value.contacts ? value.contacts[0] : {};\n  \n  return {\n    message_id: message.id,\n    from: message.from,\n    timestamp: message.timestamp,\n    type: message.type,\n    text: message.text ? message.text.body : '',\n    customer_name: contact.profile ? contact.profile.name : 'Unknown',\n    customer_phone: message.from,\n    platform: 'whatsapp',\n    webhook_data: webhookData\n  };\n}\n\nreturn {};"
+      },
+      "id": "extract-message-data",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 240]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "platform_integration_id",
+              "value": "={{ $json.platform_integration_id || 'default-whatsapp-integration' }}"
+            },
+            {
+              "name": "external_conversation_id",
+              "value": "={{ $json.from }}"
+            },
+            {
+              "name": "customer_identifier",
+              "value": "={{ $json.customer_phone }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ $json.customer_name }}"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({platform: 'whatsapp', last_message_time: $json.timestamp}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "upsert-conversation",
+      "name": "Upsert Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 240]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-conversation').first().json.id }}"
+            },
+            {
+              "name": "external_message_id",
+              "value": "={{ $('extract-message-data').first().json.message_id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "customer"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "={{ $('extract-message-data').first().json.customer_phone }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('extract-message-data').first().json.text }}"
+            },
+            {
+              "name": "message_type",
+              "value": "={{ $('extract-message-data').first().json.type }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify($('extract-message-data').first().json.webhook_data) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-message",
+      "name": "Save Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 240]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=You are a professional customer service AI assistant for {{ $('extract-message-data').first().json.customer_name || 'the customer' }}.\n\nCustomer Message: {{ $('extract-message-data').first().json.text }}\n\nContext: This is a WhatsApp conversation. The customer's name is {{ $('extract-message-data').first().json.customer_name }} and their phone number is {{ $('extract-message-data').first().json.customer_phone }}.\n\nInstructions:\n1. Respond professionally and helpfully\n2. Keep responses concise for WhatsApp\n3. If you need to escalate to a human agent, say \"Let me connect you with one of our team members\"\n4. Always be polite and solution-oriented\n5. Use the customer's name when appropriate\n\nProvide a helpful response:",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 200
+        }
+      },
+      "id": "generate-ai-response",
+      "name": "Generate AI Response",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [1200, 240],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('extract-message-data').first().json.customer_phone }}"
+            },
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": "={{ JSON.stringify({body: $('generate-ai-response').first().json.response || $('generate-ai-response').first().json.text || 'Thank you for your message. Let me connect you with one of our team members.'}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "send-whatsapp-response",
+      "name": "Send WhatsApp Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1400, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "whatsapp-api-token",
+          "name": "WhatsApp API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-conversation').first().json.id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "bot"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "ai-assistant"
+            },
+            {
+              "name": "content",
+              "value": "={{ JSON.parse($('send-whatsapp-response').first().json.text).body }}"
+            },
+            {
+              "name": "message_type",
+              "value": "text"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({generated_by: 'ai', model: 'llama3.2', response_time: Date.now()}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-bot-response",
+      "name": "Save Bot Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1600, 240]
+    },
+    {
+      "parameters": {
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1800, 240]
+    },
+    {
+      "parameters": {
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "webhook-response-no-message",
+      "name": "Webhook Response (No Message)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [600, 400]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check if Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Message": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Webhook Response (No Message)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Upsert Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Conversation": {
+      "main": [
+        [
+          {
+            "node": "Save Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Message": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Response": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Response": {
+      "main": [
+        [
+          {
+            "node": "Save Bot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Bot Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": ["customer-service", "whatsapp", "ai-automation"]
+}

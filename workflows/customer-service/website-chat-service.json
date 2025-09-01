@@ -1,0 +1,406 @@
+{
+  "name": "Website Chat Widget AI Customer Service",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "website-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "website-chat-webhook",
+      "name": "Website Chat Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "website-chat-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract website chat data\nconst chatData = $input.first().json;\n\nreturn {\n  session_id: chatData.session_id || Date.now().toString(),\n  visitor_id: chatData.visitor_id || chatData.session_id,\n  message: chatData.message || '',\n  visitor_name: chatData.visitor_name || 'Website Visitor',\n  visitor_email: chatData.visitor_email || '',\n  page_url: chatData.page_url || '',\n  user_agent: chatData.user_agent || '',\n  ip_address: chatData.ip_address || '',\n  timestamp: Date.now(),\n  platform: 'website',\n  chat_data: chatData\n};"
+      },
+      "id": "extract-website-chat-data",
+      "name": "Extract Website Chat Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "platform_integration_id",
+              "value": "={{ $json.platform_integration_id || 'default-website-integration' }}"
+            },
+            {
+              "name": "external_conversation_id",
+              "value": "={{ $json.session_id }}"
+            },
+            {
+              "name": "customer_identifier",
+              "value": "={{ $json.visitor_id }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ $json.visitor_name }}"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({platform: 'website', visitor_email: $json.visitor_email, page_url: $json.page_url, user_agent: $json.user_agent, ip_address: $json.ip_address, last_message_time: $json.timestamp}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "upsert-website-conversation",
+      "name": "Upsert Website Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-website-conversation').first().json.id }}"
+            },
+            {
+              "name": "external_message_id",
+              "value": "={{ `msg_${$('extract-website-chat-data').first().json.timestamp}` }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "customer"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "={{ $('extract-website-chat-data').first().json.visitor_id }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('extract-website-chat-data').first().json.message }}"
+            },
+            {
+              "name": "message_type",
+              "value": "text"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify($('extract-website-chat-data').first().json.chat_data) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-website-message",
+      "name": "Save Website Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=You are a professional website customer service AI assistant.\n\nVisitor: {{ $('extract-website-chat-data').first().json.visitor_name }}\nEmail: {{ $('extract-website-chat-data').first().json.visitor_email || 'Not provided' }}\nMessage: {{ $('extract-website-chat-data').first().json.message }}\n\nContext: This is a website chat conversation. The visitor is on page: {{ $('extract-website-chat-data').first().json.page_url }}.\n\nInstructions:\n1. Respond professionally and helpfully\n2. Be welcoming and friendly for website visitors\n3. If they haven't provided their name, ask for it politely\n4. If they need human assistance, say \"I'll connect you with one of our team members shortly\"\n5. Always be polite and solution-oriented\n6. Provide clear and actionable responses\n7. If appropriate, ask for their email for follow-up\n\nProvide a helpful response:",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 350
+        }
+      },
+      "id": "generate-website-ai-response",
+      "name": "Generate Website AI Response",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [1000, 300],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "supabaseApi",
+        "requestMethod": "POST",
+        "url": "http://supabase-kong:8000/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ $('upsert-website-conversation').first().json.id }}"
+            },
+            {
+              "name": "sender_type",
+              "value": "bot"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "website-ai-assistant"
+            },
+            {
+              "name": "content",
+              "value": "={{ $('generate-website-ai-response').first().json.response || $('generate-website-ai-response').first().json.text || 'Thank you for your message! I\\'ll connect you with one of our team members shortly.' }}"
+            },
+            {
+              "name": "message_type",
+              "value": "text"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({generated_by: 'ai', model: 'llama3.2', platform: 'website', response_time: Date.now()}) }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "id": "save-website-bot-response",
+      "name": "Save Website Bot Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"session_id\": \"{{ $('extract-website-chat-data').first().json.session_id }}\",\n  \"response\": \"{{ $('generate-website-ai-response').first().json.response || $('generate-website-ai-response').first().json.text || 'Thank you for your message! I\\'ll connect you with one of our team members shortly.' }}\",\n  \"timestamp\": {{ Date.now() }},\n  \"bot_name\": \"AI Assistant\"\n}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "website-chat-response",
+      "name": "Website Chat Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('extract-website-chat-data').first().json.message.toLowerCase() }}",
+              "rightValue": "hello",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ $('extract-website-chat-data').first().json.message.toLowerCase() }}",
+              "rightValue": "hi",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ $('extract-website-chat-data').first().json.message.toLowerCase() }}",
+              "rightValue": "hey",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "check-greeting",
+      "name": "Check Greeting",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 500]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "prompt": "=You are a friendly website customer service AI assistant greeting a new visitor.\n\nVisitor: {{ $('extract-website-chat-data').first().json.visitor_name }}\nMessage: {{ $('extract-website-chat-data').first().json.message }}\n\nContext: This visitor just said hello/hi on our website chat. They're on page: {{ $('extract-website-chat-data').first().json.page_url }}.\n\nInstructions:\n1. Give a warm, welcoming greeting\n2. Introduce yourself as the AI assistant\n3. Ask how you can help them today\n4. Be friendly and professional\n5. Keep it concise but welcoming\n\nProvide a warm greeting response:",
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 200
+        }
+      },
+      "id": "generate-greeting-response",
+      "name": "Generate Greeting Response",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [600, 460],
+      "credentials": {
+        "ollamaApi": {
+          "id": "local-ollama-service",
+          "name": "Local Ollama service"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Website Chat Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Website Chat Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Greeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Website Chat Data": {
+      "main": [
+        [
+          {
+            "node": "Upsert Website Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Website Conversation": {
+      "main": [
+        [
+          {
+            "node": "Save Website Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Website Message": {
+      "main": [
+        [
+          {
+            "node": "Generate Website AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Website AI Response": {
+      "main": [
+        [
+          {
+            "node": "Save Website Bot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Website Bot Response": {
+      "main": [
+        [
+          {
+            "node": "Website Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Greeting": {
+      "main": [
+        [
+          {
+            "node": "Generate Greeting Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": ["customer-service", "website", "chat-widget", "ai-automation"]
+}
